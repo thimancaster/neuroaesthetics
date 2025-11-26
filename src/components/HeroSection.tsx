@@ -25,9 +25,11 @@ const floatingCards = [
 
 export const HeroSection = () => {
   return (
-    <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-background via-mist to-fog pt-20">
+    <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-mist via-background to-fog pt-20">
       {/* Background decoration */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-5" />
+      <div className="absolute inset-0 bg-grid-pattern opacity-[0.03]" />
+      <div className="absolute top-20 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+      <div className="absolute bottom-20 left-0 w-80 h-80 bg-accent/5 rounded-full blur-3xl" />
       
       <div className="container mx-auto px-4 py-20">
         <div className="max-w-5xl mx-auto text-center relative">
@@ -37,9 +39,9 @@ export const HeroSection = () => {
             transition={{ duration: 0.7 }}
             id="hero-title"
           >
-            <h1 className="text-5xl md:text-7xl font-bold text-foreground mb-6 leading-tight">
+            <h1 className="text-5xl md:text-7xl font-serif font-bold text-foreground mb-6 leading-tight">
               A Ciência da Precisão na
-              <span className="block bg-gradient-to-r from-primary via-primary-light to-accent bg-clip-text text-transparent">
+              <span className="block bg-gradient-to-r from-primary via-accent to-primary-light bg-clip-text text-transparent mt-2">
                 Harmonização Facial
               </span>
             </h1>
@@ -49,7 +51,7 @@ export const HeroSection = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.2 }}
-            className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-3xl mx-auto"
+            className="text-lg md:text-xl text-muted-foreground mb-10 max-w-3xl mx-auto font-light"
             id="hero-subtitle"
           >
             Padronização fotográfica e análise anatômica guiada por IA para injetores de elite.
@@ -61,7 +63,7 @@ export const HeroSection = () => {
             transition={{ duration: 0.7, delay: 0.4 }}
             id="hero-cta"
           >
-            <Button size="lg" className="text-lg px-8 py-6 gap-3 bg-gradient-to-r from-primary to-primary-light hover:opacity-90 transition-opacity">
+            <Button size="lg" className="text-base px-10 py-7 gap-3 bg-primary hover:bg-primary-light transition-all shadow-lg hover:shadow-xl font-medium">
               Começar Análise
               <ArrowRight className="h-5 w-5" />
             </Button>
@@ -79,15 +81,15 @@ export const HeroSection = () => {
                 id={`floating-card-${index}`}
               >
                 <div className="relative group cursor-pointer">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all" />
-                  <div className="relative bg-background/60 backdrop-blur-xl border border-border/50 rounded-2xl p-6 shadow-lg hover:shadow-2xl transition-all">
-                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center mb-4 mx-auto">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/15 to-accent/15 rounded-2xl blur-xl group-hover:blur-2xl transition-all" />
+                  <div className="relative bg-card/80 backdrop-blur-xl border border-primary/20 rounded-2xl p-6 shadow-md hover:shadow-xl transition-all">
+                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-4 mx-auto shadow-md">
                       <card.icon className="h-7 w-7 text-primary-foreground" />
                     </div>
-                    <h3 className="text-lg font-semibold text-foreground mb-2">
+                    <h3 className="text-lg font-semibold text-foreground mb-2 font-serif">
                       {card.title}
                     </h3>
-                    <p className="text-muted-foreground text-sm">
+                    <p className="text-muted-foreground text-sm leading-relaxed">
                       {card.description}
                     </p>
                   </div>

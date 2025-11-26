@@ -8,42 +8,42 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* NeuroAesthetics Design System - Clinic Premium */
-    --background: 0 0% 100%;
-    --foreground: 215 25% 15%;
+    /* NeuroAesthetics Design System - Elegant Premium Clinic */
+    --background: 30 20% 96%;
+    --foreground: 30 10% 25%;
     
-    --mist: 210 40% 98%;
-    --fog: 210 40% 97%;
+    --mist: 30 25% 94%;
+    --fog: 30 20% 92%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card: 30 30% 98%;
+    --card-foreground: 30 10% 25%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover: 30 30% 98%;
+    --popover-foreground: 30 10% 25%;
 
-    /* Deep Teal - Medical Precision */
-    --primary: 173 80% 25%;
-    --primary-foreground: 0 0% 100%;
-    --primary-light: 173 60% 45%;
+    /* Elegant Gold - Premium Luxury */
+    --primary: 38 45% 55%;
+    --primary-foreground: 30 30% 98%;
+    --primary-light: 38 55% 70%;
     
-    /* Champagne Gold - Premium Accent */
-    --accent: 38 92% 50%;
-    --accent-foreground: 0 0% 100%;
-    --accent-light: 38 92% 85%;
+    /* Bronze Accent - Sophisticated */
+    --accent: 35 50% 50%;
+    --accent-foreground: 30 30% 98%;
+    --accent-light: 35 60% 75%;
 
-    /* Neutral Secondary */
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 215 25% 15%;
+    /* Warm Neutral Secondary */
+    --secondary: 30 20% 90%;
+    --secondary-foreground: 30 10% 25%;
 
-    --muted: 210 30% 94%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 30 15% 88%;
+    --muted-foreground: 30 8% 50%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 173 80% 25%;
+    --border: 30 20% 85%;
+    --input: 30 20% 85%;
+    --ring: 38 45% 55%;
 
     --radius: 0.75rem;
 
@@ -65,38 +65,38 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 215 28% 8%;
-    --foreground: 210 40% 98%;
+    --background: 30 15% 12%;
+    --foreground: 30 20% 95%;
 
-    --mist: 215 25% 12%;
-    --fog: 215 25% 14%;
+    --mist: 30 15% 15%;
+    --fog: 30 15% 18%;
 
-    --card: 215 28% 10%;
-    --card-foreground: 210 40% 98%;
+    --card: 30 15% 14%;
+    --card-foreground: 30 20% 95%;
 
-    --popover: 215 28% 10%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 30 15% 14%;
+    --popover-foreground: 30 20% 95%;
 
-    --primary: 173 70% 35%;
-    --primary-foreground: 0 0% 100%;
-    --primary-light: 173 60% 50%;
+    --primary: 38 50% 60%;
+    --primary-foreground: 30 15% 12%;
+    --primary-light: 38 55% 70%;
 
-    --accent: 38 92% 50%;
-    --accent-foreground: 0 0% 100%;
-    --accent-light: 38 92% 70%;
+    --accent: 35 55% 55%;
+    --accent-foreground: 30 15% 12%;
+    --accent-light: 35 60% 70%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 30 15% 20%;
+    --secondary-foreground: 30 20% 95%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 30 12% 22%;
+    --muted-foreground: 30 15% 65%;
 
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 30 20% 95%;
 
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 173 70% 35%;
+    --border: 30 12% 25%;
+    --input: 30 12% 25%;
+    --ring: 38 50% 60%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
