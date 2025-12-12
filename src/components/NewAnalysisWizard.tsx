@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, ArrowLeft, ArrowRight, Check, User, Camera, Crosshair, Loader2, FolderOpen, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { CameraCapture } from "./CameraCapture";
+import { CameraCapture, PhotoType } from "./CameraCapture";
 
 interface PatientData {
   name: string;
@@ -25,8 +25,6 @@ interface DosageData {
   procerus: number;
   corrugator: number;
 }
-
-type PhotoType = keyof PhotoData;
 
 export function NewAnalysisWizard() {
   const [step, setStep] = useState(1);
@@ -70,6 +68,26 @@ export function NewAnalysisWizard() {
     return URL.createObjectURL(file);
   };
 
+  const uploadPhoto = async (file: File, userId: string, patientId: string, photoType: PhotoType): Promise<string | null> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}/${patientId}/${photoType}-${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('patient-photos')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('patient-photos')
+      .getPublicUrl(fileName);
+
+    return publicUrl;
+  };
+
   const handleSaveAnalysis = async () => {
     setIsLoading(true);
     try {
@@ -90,7 +108,14 @@ export function NewAnalysisWizard() {
 
       if (patientError) throw patientError;
 
-      // Create analysis
+      // Upload photos in parallel
+      const photoUrls = await Promise.all([
+        photos.resting ? uploadPhoto(photos.resting, user.id, patient.id, 'resting') : null,
+        photos.glabellar ? uploadPhoto(photos.glabellar, user.id, patient.id, 'glabellar') : null,
+        photos.frontal ? uploadPhoto(photos.frontal, user.id, patient.id, 'frontal') : null,
+      ]);
+
+      // Create analysis with photo URLs
       const { error: analysisError } = await supabase
         .from('analyses')
         .insert({
@@ -98,6 +123,9 @@ export function NewAnalysisWizard() {
           patient_id: patient.id,
           procerus_dosage: dosage.procerus,
           corrugator_dosage: dosage.corrugator,
+          resting_photo_url: photoUrls[0],
+          glabellar_photo_url: photoUrls[1],
+          frontal_photo_url: photoUrls[2],
           status: 'completed',
         });
 
@@ -105,7 +133,7 @@ export function NewAnalysisWizard() {
 
       toast({
         title: "Análise salva com sucesso!",
-        description: "A dosagem foi registrada para o paciente.",
+        description: "Fotos e dosagens registradas para o paciente.",
       });
 
       // Reset form
@@ -301,6 +329,7 @@ export function NewAnalysisWizard() {
           isOpen={!!cameraOpen}
           onClose={() => setCameraOpen(null)}
           onCapture={handleCameraCapture(cameraOpen)}
+          photoType={cameraOpen}
           photoLabel={
             cameraOpen === "resting" 
               ? "Face em Repouso" 
