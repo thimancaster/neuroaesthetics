@@ -3,14 +3,61 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Camera, X, SwitchCamera, Loader2 } from "lucide-react";
 
+export type PhotoType = "resting" | "glabellar" | "frontal";
+
 interface CameraCaptureProps {
   isOpen: boolean;
   onClose: () => void;
   onCapture: (file: File) => void;
   photoLabel: string;
+  photoType: PhotoType;
 }
 
-export function CameraCapture({ isOpen, onClose, onCapture, photoLabel }: CameraCaptureProps) {
+const PHOTO_GUIDES: Record<PhotoType, { title: string; instruction: string; icon: React.ReactNode }> = {
+  resting: {
+    title: "Face em Repouso",
+    instruction: "Mantenha expressão neutra, olhe diretamente para a câmera",
+    icon: (
+      <svg viewBox="0 0 100 100" className="w-full h-full">
+        <ellipse cx="50" cy="50" rx="35" ry="42" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2" />
+        <circle cx="35" cy="42" r="4" fill="none" stroke="currentColor" strokeWidth="1" />
+        <circle cx="65" cy="42" r="4" fill="none" stroke="currentColor" strokeWidth="1" />
+        <path d="M40 62 Q50 66 60 62" fill="none" stroke="currentColor" strokeWidth="1" />
+      </svg>
+    ),
+  },
+  glabellar: {
+    title: "Contração Glabelar",
+    instruction: "Faça expressão de 'Bravo' — franza a testa",
+    icon: (
+      <svg viewBox="0 0 100 100" className="w-full h-full">
+        <ellipse cx="50" cy="50" rx="35" ry="42" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2" />
+        <path d="M30 40 L40 44" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M70 40 L60 44" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="35" cy="45" r="3" fill="none" stroke="currentColor" strokeWidth="1" />
+        <circle cx="65" cy="45" r="3" fill="none" stroke="currentColor" strokeWidth="1" />
+        <path d="M45 35 Q50 32 55 35" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M42 65 Q50 62 58 65" fill="none" stroke="currentColor" strokeWidth="1" />
+      </svg>
+    ),
+  },
+  frontal: {
+    title: "Contração Frontal",
+    instruction: "Faça expressão de 'Surpresa' — levante as sobrancelhas",
+    icon: (
+      <svg viewBox="0 0 100 100" className="w-full h-full">
+        <ellipse cx="50" cy="50" rx="35" ry="42" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2" />
+        <path d="M28 35 Q35 30 42 35" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M58 35 Q65 30 72 35" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="35" cy="44" r="5" fill="none" stroke="currentColor" strokeWidth="1" />
+        <circle cx="65" cy="44" r="5" fill="none" stroke="currentColor" strokeWidth="1" />
+        <ellipse cx="50" cy="68" rx="8" ry="6" fill="none" stroke="currentColor" strokeWidth="1" />
+      </svg>
+    ),
+  },
+};
+
+export function CameraCapture({ isOpen, onClose, onCapture, photoLabel, photoType }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -18,6 +65,8 @@ export function CameraCapture({ isOpen, onClose, onCapture, photoLabel }: Camera
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [flashActive, setFlashActive] = useState(false);
+
+  const guide = PHOTO_GUIDES[photoType];
 
   const startCamera = useCallback(async () => {
     setIsLoading(true);
@@ -164,9 +213,16 @@ export function CameraCapture({ isOpen, onClose, onCapture, photoLabel }: Camera
             <div className="absolute inset-0 bg-white z-30 animate-fade-out" />
           )}
 
-          {/* Face guide overlay */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-48 h-64 border-2 border-white/40 rounded-[50%] border-dashed" />
+          {/* Face guide overlay with specific instructions */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="w-48 h-64 text-white/50">
+              {guide.icon}
+            </div>
+            <div className="absolute bottom-28 left-0 right-0 text-center px-4">
+              <p className="text-white/80 text-sm font-medium bg-black/40 rounded-lg px-3 py-2 inline-block">
+                {guide.instruction}
+              </p>
+            </div>
           </div>
 
           {/* Hidden canvas for capturing */}
