@@ -4,32 +4,61 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { DashboardStats } from "@/components/DashboardStats";
 import { NewAnalysisWizard } from "@/components/NewAnalysisWizard";
+import { PatientsList } from "@/components/PatientsList";
+import { AnalysesGallery } from "@/components/AnalysesGallery";
+import { ProfileSettings } from "@/components/ProfileSettings";
+import { RecentAnalyses } from "@/components/RecentAnalyses";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, PlusCircle } from "lucide-react";
+import { Loader2, PlusCircle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+interface Analysis {
+  id: string;
+  patient_id: string;
+  procerus_dosage: number | null;
+  corrugator_dosage: number | null;
+  resting_photo_url: string | null;
+  glabellar_photo_url: string | null;
+  frontal_photo_url: string | null;
+  created_at: string;
+  status: string | null;
+  patients?: {
+    name: string;
+    age: number | null;
+  };
+}
 
 function DashboardHome() {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ patients: 0, analyses: 0 });
+  const [recentAnalyses, setRecentAnalyses] = useState<Analysis[]>([]);
   const { user } = useAuth();
 
   useEffect(() => {
     if (user) {
-      fetchStats();
+      fetchData();
     }
   }, [user]);
 
-  const fetchStats = async () => {
-    const [patientsRes, analysesRes] = await Promise.all([
-      supabase.from('patients').select('id', { count: 'exact', head: true }),
-      supabase.from('analyses').select('id', { count: 'exact', head: true }),
+  const fetchData = async () => {
+    const [patientsRes, analysesRes, recentRes] = await Promise.all([
+      supabase.from("patients").select("id", { count: "exact", head: true }),
+      supabase.from("analyses").select("id", { count: "exact", head: true }),
+      supabase
+        .from("analyses")
+        .select("id, procerus_dosage, corrugator_dosage, resting_photo_url, created_at, patients(name)")
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
+
     setStats({
       patients: patientsRes.count || 0,
       analyses: analysesRes.count || 0,
     });
+
+    setRecentAnalyses((recentRes.data as Analysis[]) || []);
   };
 
   return (
@@ -41,7 +70,7 @@ function DashboardHome() {
             Bem-vindo de volta! Aqui está um resumo da sua atividade.
           </p>
         </div>
-        <Button onClick={() => navigate('/dashboard/new-analysis')}>
+        <Button onClick={() => navigate("/dashboard/new-analysis")}>
           <PlusCircle className="w-4 h-4 mr-2" />
           Nova Análise
         </Button>
@@ -55,43 +84,54 @@ function DashboardHome() {
             <CardTitle className="text-lg font-medium">Ações Rápidas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full justify-start"
-              onClick={() => navigate('/dashboard/new-analysis')}
+              onClick={() => navigate("/dashboard/new-analysis")}
             >
               <PlusCircle className="w-4 h-4 mr-3" />
               Iniciar Nova Análise Facial
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full justify-start"
-              onClick={() => navigate('/dashboard/patients')}
+              onClick={() => navigate("/dashboard/patients")}
             >
-              <PlusCircle className="w-4 h-4 mr-3" />
-              Adicionar Novo Paciente
+              <Users className="w-4 h-4 mr-3" />
+              Ver Pacientes Cadastrados
             </Button>
           </CardContent>
         </Card>
 
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="text-lg font-medium">Guia Rápido</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p><strong>1.</strong> Cadastre seu paciente com dados básicos</p>
-            <p><strong>2.</strong> Tire as 3 fotos do protocolo (repouso, glabelar, frontal)</p>
-            <p><strong>3.</strong> O sistema sugere dosagens baseadas na análise muscular</p>
-            <p><strong>4.</strong> Ajuste conforme necessário e salve o protocolo</p>
-          </CardContent>
-        </Card>
+        <RecentAnalyses analyses={recentAnalyses} />
       </div>
+
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg font-medium">Guia Rápido</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            <strong>1.</strong> Cadastre seu paciente com dados básicos
+          </p>
+          <p>
+            <strong>2.</strong> Tire as 3 fotos do protocolo (repouso, glabelar, frontal)
+          </p>
+          <p>
+            <strong>3.</strong> O sistema sugere dosagens baseadas na análise muscular
+          </p>
+          <p>
+            <strong>4.</strong> Ajuste conforme necessário e salve o protocolo
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
 function PatientsPage() {
   const [patients, setPatients] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -99,77 +139,73 @@ function PatientsPage() {
   }, [user]);
 
   const fetchPatients = async () => {
-    const { data } = await supabase.from('patients').select('*').order('created_at', { ascending: false });
+    setIsLoading(true);
+    const { data } = await supabase
+      .from("patients")
+      .select("*")
+      .order("created_at", { ascending: false });
     setPatients(data || []);
+    setIsLoading(false);
   };
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-light text-foreground">Pacientes</h1>
-      {patients.length === 0 ? (
+      {isLoading ? (
         <Card className="border-border/50">
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Nenhum paciente cadastrado ainda.</p>
-            <p className="text-sm text-muted-foreground mt-2">Inicie uma nova análise para adicionar pacientes.</p>
+          <CardContent className="py-12 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {patients.map((patient) => (
-            <Card key={patient.id} className="border-border/50">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-foreground">{patient.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {patient.age ? `${patient.age} anos` : 'Idade não informada'}
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(patient.created_at).toLocaleDateString('pt-BR')}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <PatientsList patients={patients} onRefresh={fetchPatients} />
       )}
     </div>
   );
 }
 
 function ProtocolsPage() {
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) fetchAnalyses();
+  }, [user]);
+
+  const fetchAnalyses = async () => {
+    setIsLoading(true);
+    const { data } = await supabase
+      .from("analyses")
+      .select(
+        "id, patient_id, procerus_dosage, corrugator_dosage, resting_photo_url, glabellar_photo_url, frontal_photo_url, created_at, status, patients(name, age)"
+      )
+      .order("created_at", { ascending: false });
+    setAnalyses((data as Analysis[]) || []);
+    setIsLoading(false);
+  };
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-light text-foreground">Protocolos</h1>
-      <Card className="border-border/50">
-        <CardContent className="py-12 text-center">
-          <p className="text-muted-foreground">Protocolos salvos aparecerão aqui.</p>
-        </CardContent>
-      </Card>
+      <h1 className="text-2xl font-light text-foreground">Galeria de Análises</h1>
+      {isLoading ? (
+        <Card className="border-border/50">
+          <CardContent className="py-12 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </CardContent>
+        </Card>
+      ) : (
+        <AnalysesGallery analyses={analyses} onRefresh={fetchAnalyses} />
+      )}
     </div>
   );
 }
 
 function SettingsPage() {
-  const { user } = useAuth();
-  
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-light text-foreground">Configurações</h1>
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle className="text-lg">Informações da Conta</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-sm text-muted-foreground">Email</p>
-            <p className="text-foreground">{user?.email}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">ID do Usuário</p>
-            <p className="text-foreground font-mono text-sm">{user?.id}</p>
-          </div>
-        </CardContent>
-      </Card>
+      <ProfileSettings />
     </div>
   );
 }
@@ -189,7 +225,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!loading && !user) {
-      navigate('/login');
+      navigate("/login");
     }
   }, [user, loading, navigate]);
 
@@ -207,13 +243,13 @@ const Dashboard = () => {
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar onSignOut={signOut} />
-        
+
         <main className="flex-1 overflow-auto">
           <header className="h-14 border-b border-border/50 flex items-center px-4 bg-background/80 backdrop-blur-sm sticky top-0 z-10">
             <SidebarTrigger className="mr-4" />
             <span className="text-sm text-muted-foreground">Portal Médico</span>
           </header>
-          
+
           <div className="p-6">
             <Routes>
               <Route index element={<DashboardHome />} />
