@@ -30,7 +30,7 @@ const benefits = [
 
 export const BenefitsSection = () => {
   return (
-    <section className="py-24 bg-gradient-to-b from-background to-mist relative overflow-hidden">
+    <section id="benefits" className="py-24 bg-gradient-to-b from-background to-mist relative overflow-hidden">
       <div className="absolute inset-0 bg-grid-pattern opacity-[0.02]" />
       
       <div className="container mx-auto px-4">

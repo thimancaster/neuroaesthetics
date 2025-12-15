@@ -1,13 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { LogIn, Atom } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 
-interface NavbarProps {
-  onPhysicsToggle: () => void;
-  physicsActive: boolean;
-}
-
-export const Navbar = ({ onPhysicsToggle, physicsActive }: NavbarProps) => {
+export const Navbar = () => {
   return (
     <motion.nav
       initial={{ y: -20, opacity: 0 }}
@@ -18,14 +14,14 @@ export const Navbar = ({ onPhysicsToggle, physicsActive }: NavbarProps) => {
     >
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2">
             <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-sm">
               <span className="text-primary-foreground font-bold text-xl font-serif">N</span>
             </div>
             <span className="text-xl font-semibold text-foreground font-serif">
               NeuroAesthetics AI
             </span>
-          </div>
+          </Link>
 
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-muted-foreground hover:text-primary transition-colors font-medium">
@@ -39,25 +35,12 @@ export const Navbar = ({ onPhysicsToggle, physicsActive }: NavbarProps) => {
             </a>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onPhysicsToggle}
-              className={`relative ${physicsActive ? 'text-accent' : 'text-muted-foreground'}`}
-              title={physicsActive ? "Desativar Física" : "Ativar Modo Física"}
-            >
-              <Atom className="h-5 w-5" />
-              {physicsActive && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full animate-pulse" />
-              )}
-            </Button>
-            
-            <Button variant="outline" className="gap-2 border-primary/30 hover:bg-primary/5 hover:border-primary/50 font-medium">
+          <Button asChild variant="outline" className="gap-2 border-primary/30 hover:bg-primary/5 hover:border-primary/50 font-medium">
+            <Link to="/login">
               <LogIn className="h-4 w-4" />
               Login Médico
-            </Button>
-          </div>
+            </Link>
+          </Button>
         </div>
       </div>
     </motion.nav>
