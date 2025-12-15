@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Scan, Grid3x3, Syringe, ArrowRight } from "lucide-react";
-
+import { useNavigate } from "react-router-dom";
 const floatingCards = [
   {
     icon: Scan,
@@ -24,6 +24,8 @@ const floatingCards = [
 ];
 
 export const HeroSection = () => {
+  const navigate = useNavigate();
+  
   return (
     <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-mist via-background to-fog pt-20">
       {/* Background decoration */}
@@ -72,7 +74,11 @@ export const HeroSection = () => {
                 id="hero-cta"
                 className="flex flex-col sm:flex-row gap-4 lg:justify-start justify-center items-center"
               >
-                <Button size="lg" className="text-base px-10 py-7 gap-3 bg-primary hover:bg-primary/90 transition-all shadow-lg hover:shadow-xl font-medium">
+                <Button 
+                  size="lg" 
+                  onClick={() => navigate("/login")}
+                  className="text-base px-10 py-7 gap-3 bg-primary hover:bg-primary/90 transition-all shadow-lg hover:shadow-xl font-medium"
+                >
                   Começar Análise
                   <ArrowRight className="h-5 w-5" />
                 </Button>
