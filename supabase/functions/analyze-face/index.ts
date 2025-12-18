@@ -5,83 +5,121 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `Você é um especialista em medicina estética, especificamente em análise facial para aplicação de toxina botulínica (Botox).
+const SYSTEM_PROMPT = `Você é um especialista em medicina estética, especificamente em análise facial para aplicação de toxina botulínica.
 
-Sua tarefa é analisar fotos faciais e identificar:
-1. Pontos exatos de aplicação baseados na anatomia muscular
-2. Dosagens recomendadas baseadas na literatura médica e guidelines
-3. Observações clínicas sobre a dinâmica facial do paciente
+Sua tarefa é analisar fotos faciais e retornar um JSON estruturado profissional para planejamento de tratamento.
 
-MÚSCULOS PARA ANÁLISE (lista completa):
+## SISTEMA DE COORDENADAS (CRÍTICO)
+Use coordenadas RELATIVAS (0.0 a 1.0) baseadas na bounding box da face:
+- x: 0.0 = extrema esquerda, 0.5 = centro, 1.0 = extrema direita
+- y: 0.0 = topo da testa, 1.0 = ponta do queixo
 
-TERÇO SUPERIOR (Glabelar/Frontal):
-- procerus: Localizado na raiz do nariz, causa rugas horizontais entre as sobrancelhas. Dose: 4-10U, 1 ponto
-- corrugator_left: Corrugador superciliar esquerdo, causa linhas verticais da glabela. Dose: 8-20U, 2-3 pontos
-- corrugator_right: Corrugador superciliar direito. Dose: 8-20U, 2-3 pontos
-- frontalis: Músculo frontal, causa rugas horizontais na testa. Dose: 10-30U, 4-8 pontos
+## ESCALA DE AVALIAÇÃO
+Use a Escala de Merz (0-4) para severidade:
+- 0: Sem rugas visíveis
+- 1: Rugas muito leves
+- 2: Rugas moderadas
+- 3: Rugas severas
+- 4: Rugas muito severas
 
-REGIÃO PERIORBITAL:
-- orbicularis_oculi_left: Orbicular do olho esquerdo, causa pés de galinha. Dose: 6-15U, 3-4 pontos
-- orbicularis_oculi_right: Orbicular do olho direito. Dose: 6-15U, 3-4 pontos
+Use a Escala de Glogau (I-IV) para envelhecimento:
+- I: Sem rugas (20-30 anos)
+- II: Rugas em movimento (30-40 anos)
+- III: Rugas em repouso (40-50 anos)
+- IV: Apenas rugas (50+ anos)
 
-TERÇO MÉDIO:
-- nasalis: Músculo nasal, causa rugas no dorso nasal. Dose: 2-6U, 1-2 pontos
-- levator_labii: Levantador do lábio superior. Dose: 2-4U por lado
-- zygomaticus_major: Zigomático maior, músculo do sorriso
-- zygomaticus_minor: Zigomático menor
+## MÚSCULOS E DOSAGENS (em Unidades Botox®/OnabotulinumtoxinA)
 
-TERÇO INFERIOR:
-- orbicularis_oris: Orbicular da boca, causa rugas periorais. Dose: 2-6U, 2-4 pontos
-- depressor_anguli: Depressor do ângulo da boca, causa comissuras caídas. Dose: 2-6U, 1-2 pontos por lado
-- mentalis: Músculo mentual, causa aspecto de "queixo de laranja". Dose: 4-8U, 1-2 pontos
-- masseter: Masseter, para bruxismo ou afinamento facial. Dose: 20-50U por lado
+GLABELA (Complexo):
+- procerus: Central, 1 ponto, 4-10U
+- corrugator (par): Cabeça e cauda, 2-3 pontos cada lado, 8-20U total
 
-SISTEMA DE COORDENADAS:
-Retorne coordenadas como porcentagens (0-100) onde:
-- x: 0 = borda esquerda, 50 = centro, 100 = borda direita
-- y: 0 = topo (testa alta), 100 = base (queixo)
+FRONTAL:
+- frontalis: Grid em V, 4-8 pontos, 10-30U total
+- REGRA: Mínimo 2cm acima da sobrancelha
 
-COORDENADAS DE REFERÊNCIA POR MÚSCULO:
-- Frontal (frontalis): y entre 5-20, x variando bilateralmente
-- Procerus: x ~ 50, y ~ 28-32
-- Corrugadores: y ~ 25-30, x entre 30-40 (esq) e 60-70 (dir)
-- Orbicular ocular: y ~ 30-40, x entre 15-30 (esq) e 70-85 (dir)
-- Nasal: x ~ 48-52, y ~ 40-48
-- Orbicular boca: x ~ 40-60, y ~ 65-72
-- Depressor ângulo: x ~ 35-40 (esq), 60-65 (dir), y ~ 70-75
-- Mentual: x ~ 45-55, y ~ 80-88
-- Masseter: x ~ 20-30 (esq), 70-80 (dir), y ~ 55-70
+PERIORBITAL:
+- orbicularis_oculi: Fan pattern, 3-4 pontos por lado, 6-15U por lado
+- REGRA: 1cm lateral à borda óssea orbital
 
-IMPORTANTE: 
-- Base sua análise na dinâmica muscular visível, padrões de rugas e proporções faciais
-- Seja conservador nas dosagens para segurança
-- Inclua observações clínicas relevantes em português
-- Identifique todos os pontos necessários para um tratamento completo
+NASAL:
+- nasalis: Bunny lines, 1-2 pontos por lado, 2-6U total
 
-Retorne sua análise neste formato JSON exato:
+PERIORAL:
+- orbicularis_oris: Código de barras, 2-4 pontos, 2-6U
+- depressor_anguli: Comissuras, 1-2 pontos por lado, 2-6U
+
+INFERIOR:
+- mentalis: Queixo, 1-2 pontos centrais, 4-10U
+- masseter: Bruxismo/slim, 3-5 pontos por lado, 25-50U por lado
+
+## PROFUNDIDADE DE INJEÇÃO
+- "deep_intramuscular": Músculos profundos (Prócero, Corrugadores, Mentual, Masseter) - agulha 90º
+- "superficial": Músculos superficiais (Frontal, Orbicular, Perioral) - pápula subdérmica
+
+## ZONAS DE PERIGO (incluir no response)
+1. Margem Orbital: 1cm acima para evitar ptose palpebral
+2. Área Infraorbital: Risco de assimetria do sorriso
+3. Comissura Labial: Risco de boca caída
+
+## FORMATO JSON OBRIGATÓRIO
+
 {
-  "injectionPoints": [
-    {
-      "id": "unique_id",
-      "muscle": "nome_do_musculo",
-      "x": number (0-100),
-      "y": number (0-100),
-      "depth": "superficial" | "deep",
-      "dosage": number,
-      "notes": "nota clínica opcional em português"
-    }
-  ],
-  "totalDosage": {
-    "procerus": number,
-    "corrugator": number,
-    "frontalis": number,
-    "orbicularis_oculi": number,
-    "other": number,
-    "total": number
+  "meta_data": {
+    "algorithm_version": "v2.4_medical_consensus",
+    "image_id": "analysis_[timestamp]"
   },
-  "clinicalNotes": "Observações clínicas gerais sobre o paciente em português",
-  "confidence": number (0-1, nível de confiança na análise)
-}`;
+  "patient_profile": {
+    "estimated_gender": "male" | "female",
+    "estimated_age_range": "20-30" | "30-40" | "40-50" | "50+",
+    "muscle_strength_score": "low" | "medium" | "high",
+    "skin_type_glogau": "I" | "II" | "III" | "IV"
+  },
+  "treatment_plan": {
+    "product_selected": "OnabotulinumtoxinA",
+    "conversion_factor": 1.0,
+    "total_units_suggested": number,
+    "zones": [
+      {
+        "zone_name": "Glabella" | "Frontalis" | "Periorbital" | "Nasal" | "Perioral" | "Mentalis" | "Masseter",
+        "anatomy_target": "Nome dos músculos alvo",
+        "severity_scale_merz": 0-4,
+        "total_units_zone": number,
+        "injection_pattern": "central_radial" | "v_shape_grid" | "fan_pattern" | "bilateral_symmetric" | "linear",
+        "injection_points": [
+          {
+            "id": "unique_id",
+            "type": "procerus" | "corrugator_head" | "corrugator_tail" | etc,
+            "muscle": "Nome do músculo em português",
+            "units": number,
+            "depth": "deep_intramuscular" | "superficial",
+            "coordinates": { "x": 0.0-1.0, "y": 0.0-1.0 },
+            "safety_warning": boolean,
+            "warning_message": "Mensagem de aviso se necessário"
+          }
+        ]
+      }
+    ],
+    "safety_zones_to_avoid": [
+      {
+        "region": "Nome da região",
+        "reason": "Razão do risco",
+        "polygon_coordinates": [
+          { "x": number, "y": number }
+        ]
+      }
+    ]
+  },
+  "clinical_notes": "Observações clínicas detalhadas em português",
+  "confidence": 0.0-1.0
+}
+
+IMPORTANTE:
+- Analise a anatomia muscular visível nas fotos
+- Seja conservador nas dosagens (segurança primeiro)
+- Inclua TODAS as zonas de perigo relevantes
+- Ajuste doses: Homens +30-50%, Força muscular alta +20%
+- Retorne APENAS o JSON, sem markdown ou texto adicional`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -89,7 +127,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageUrls } = await req.json();
+    const { imageUrls, patientGender, patientAge } = await req.json();
     
     if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
       return new Response(
@@ -107,23 +145,29 @@ serve(async (req) => {
       );
     }
 
-    // Build content array with images
+    const patientContext = patientGender || patientAge 
+      ? `\n\nInformações do paciente: ${patientGender ? `Gênero: ${patientGender}` : ''} ${patientAge ? `Idade: ${patientAge} anos` : ''}`
+      : '';
+
     const content: any[] = [
       {
         type: "text",
-        text: `Analise estas fotos faciais para planejamento de tratamento com toxina botulínica.
+        text: `Analise estas fotos faciais para planejamento de tratamento com toxina botulínica.${patientContext}
         
-Descrição das fotos:
-- Primeira imagem: Face em repouso (expressão neutra)
-- Segunda imagem (se fornecida): Contração glabelar (expressão de bravo/franzindo a testa)
-- Terceira imagem (se fornecida): Contração frontal (expressão de surpresa/elevando sobrancelhas)
+Descrição das fotos (em ordem):
+1. Face em repouso (expressão neutra)
+2. Contração glabelar (expressão de bravo) - se fornecida
+3. Contração frontal (surpresa) - se fornecida
+4. Sorriso forçado - se fornecida
+5. Contração nasal (bunny lines) - se fornecida
+6. Contração perioral - se fornecida
+7. Perfil esquerdo - se fornecido
+8. Perfil direito - se fornecido
 
-Com base nestas imagens, identifique todos os pontos de aplicação necessários, recomende dosagens apropriadas e forneça observações clínicas detalhadas.
-Analise cuidadosamente a anatomia muscular visível e os padrões de rugas para uma recomendação precisa.`
+Analise cuidadosamente e retorne o JSON estruturado conforme especificado.`
       }
     ];
 
-    // Add images to content
     for (const url of imageUrls.filter((u: string) => u)) {
       content.push({
         type: "image_url",
@@ -184,54 +228,174 @@ Analise cuidadosamente a anatomia muscular visível e os padrões de rugas para 
 
     console.log("AI response received, parsing...");
 
-    // Parse the JSON from the response
     let analysis;
     try {
-      // Try to extract JSON from the response (it might be wrapped in markdown code blocks)
       const jsonMatch = aiResponse.match(/```json\s*([\s\S]*?)\s*```/) || 
                         aiResponse.match(/```\s*([\s\S]*?)\s*```/) ||
                         [null, aiResponse];
       const jsonStr = jsonMatch[1] || aiResponse;
       analysis = JSON.parse(jsonStr.trim());
+      
+      // Convert new format to legacy format for backward compatibility
+      if (analysis.treatment_plan && analysis.treatment_plan.zones) {
+        const legacyPoints: any[] = [];
+        const dosageByMuscle: Record<string, number> = {};
+        
+        for (const zone of analysis.treatment_plan.zones) {
+          for (const point of zone.injection_points || []) {
+            legacyPoints.push({
+              id: point.id,
+              muscle: point.muscle || point.type,
+              x: Math.round((point.coordinates?.x || 0.5) * 100),
+              y: Math.round((point.coordinates?.y || 0.5) * 100),
+              depth: point.depth === 'deep_intramuscular' ? 'deep' : 'superficial',
+              dosage: point.units,
+              notes: point.warning_message || '',
+              safetyWarning: point.safety_warning,
+              relativeX: point.coordinates?.x,
+              relativeY: point.coordinates?.y
+            });
+            
+            const muscleKey = point.muscle || point.type || 'other';
+            dosageByMuscle[muscleKey] = (dosageByMuscle[muscleKey] || 0) + (point.units || 0);
+          }
+        }
+        
+        analysis.injectionPoints = legacyPoints;
+        analysis.totalDosage = {
+          procerus: dosageByMuscle['Procerus'] || dosageByMuscle['procerus'] || 0,
+          corrugator: (dosageByMuscle['Corrugador Esquerdo'] || 0) + (dosageByMuscle['Corrugador Direito'] || 0) + (dosageByMuscle['corrugator'] || 0),
+          frontalis: dosageByMuscle['Frontal'] || dosageByMuscle['frontalis'] || 0,
+          orbicularis_oculi: (dosageByMuscle['Orbicular Esquerdo'] || 0) + (dosageByMuscle['Orbicular Direito'] || 0) + (dosageByMuscle['orbicularis'] || 0),
+          other: Object.entries(dosageByMuscle)
+            .filter(([k]) => !['Procerus', 'procerus', 'Corrugador Esquerdo', 'Corrugador Direito', 'corrugator', 'Frontal', 'frontalis', 'Orbicular Esquerdo', 'Orbicular Direito', 'orbicularis'].includes(k))
+            .reduce((sum, [, v]) => sum + v, 0),
+          total: analysis.treatment_plan.total_units_suggested || legacyPoints.reduce((sum, p) => sum + (p.dosage || 0), 0)
+        };
+        analysis.clinicalNotes = analysis.clinical_notes || '';
+        analysis.safetyZones = analysis.treatment_plan.safety_zones_to_avoid || [];
+        analysis.patientProfile = analysis.patient_profile;
+      }
+      
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
       console.error("Raw response:", aiResponse);
       
-      // Return a comprehensive default analysis if parsing fails
+      // Return comprehensive default analysis
       analysis = {
-        injectionPoints: [
-          // Procerus
-          { id: "proc_1", muscle: "procerus", x: 50, y: 30, depth: "deep", dosage: 8, notes: "Ponto central do prócero" },
-          // Corrugadores
-          { id: "corr_l1", muscle: "corrugator_left", x: 38, y: 27, depth: "deep", dosage: 8, notes: "Corrugador medial esquerdo" },
-          { id: "corr_l2", muscle: "corrugator_left", x: 30, y: 25, depth: "superficial", dosage: 6, notes: "Corrugador lateral esquerdo" },
-          { id: "corr_r1", muscle: "corrugator_right", x: 62, y: 27, depth: "deep", dosage: 8, notes: "Corrugador medial direito" },
-          { id: "corr_r2", muscle: "corrugator_right", x: 70, y: 25, depth: "superficial", dosage: 6, notes: "Corrugador lateral direito" },
-          // Frontalis
-          { id: "front_l1", muscle: "frontalis", x: 30, y: 12, depth: "superficial", dosage: 4, notes: "Frontal lateral esquerdo" },
-          { id: "front_l2", muscle: "frontalis", x: 40, y: 10, depth: "superficial", dosage: 4, notes: "Frontal medial esquerdo" },
-          { id: "front_r1", muscle: "frontalis", x: 60, y: 10, depth: "superficial", dosage: 4, notes: "Frontal medial direito" },
-          { id: "front_r2", muscle: "frontalis", x: 70, y: 12, depth: "superficial", dosage: 4, notes: "Frontal lateral direito" },
-          // Orbicular
-          { id: "orb_l1", muscle: "orbicularis_oculi_left", x: 22, y: 33, depth: "superficial", dosage: 4, notes: "Pé de galinha superior esquerdo" },
-          { id: "orb_l2", muscle: "orbicularis_oculi_left", x: 20, y: 38, depth: "superficial", dosage: 4, notes: "Pé de galinha inferior esquerdo" },
-          { id: "orb_r1", muscle: "orbicularis_oculi_right", x: 78, y: 33, depth: "superficial", dosage: 4, notes: "Pé de galinha superior direito" },
-          { id: "orb_r2", muscle: "orbicularis_oculi_right", x: 80, y: 38, depth: "superficial", dosage: 4, notes: "Pé de galinha inferior direito" },
-        ],
-        totalDosage: { 
-          procerus: 8, 
-          corrugator: 28, 
-          frontalis: 16,
-          orbicularis_oculi: 16,
-          other: 0,
-          total: 68 
+        meta_data: {
+          algorithm_version: "v2.4_fallback",
+          image_id: `analysis_${Date.now()}`
         },
-        clinicalNotes: "Análise padrão para tratamento facial completo (terço superior). Recomenda-se avaliação individualizada da dinâmica muscular. Ajuste as dosagens conforme a massa muscular e histórico do paciente. Considere tratamentos prévios e intervalo desde última aplicação.",
-        confidence: 0.75
+        patient_profile: {
+          estimated_gender: patientGender || "female",
+          estimated_age_range: "30-40",
+          muscle_strength_score: "medium",
+          skin_type_glogau: "II"
+        },
+        treatment_plan: {
+          product_selected: "OnabotulinumtoxinA",
+          conversion_factor: 1.0,
+          total_units_suggested: 54,
+          zones: [
+            {
+              zone_name: "Glabella",
+              anatomy_target: "Procerus & Corrugadores",
+              severity_scale_merz: 2,
+              total_units_zone: 20,
+              injection_pattern: "central_radial",
+              injection_points: [
+                { id: "g1", type: "procerus", muscle: "Procerus", units: 4, depth: "deep_intramuscular", coordinates: { x: 0.50, y: 0.35 }, safety_warning: false },
+                { id: "g2", type: "corrugator_head", muscle: "Corrugador Esquerdo", units: 5, depth: "deep_intramuscular", coordinates: { x: 0.44, y: 0.33 }, safety_warning: false },
+                { id: "g3", type: "corrugator_tail", muscle: "Corrugador Esquerdo", units: 3, depth: "superficial", coordinates: { x: 0.38, y: 0.31 }, safety_warning: true, warning_message: "Manter 1cm acima da margem orbital" },
+                { id: "g4", type: "corrugator_head", muscle: "Corrugador Direito", units: 5, depth: "deep_intramuscular", coordinates: { x: 0.56, y: 0.33 }, safety_warning: false },
+                { id: "g5", type: "corrugator_tail", muscle: "Corrugador Direito", units: 3, depth: "superficial", coordinates: { x: 0.62, y: 0.31 }, safety_warning: true, warning_message: "Manter 1cm acima da margem orbital" }
+              ]
+            },
+            {
+              zone_name: "Frontalis",
+              anatomy_target: "Músculo Frontal",
+              severity_scale_merz: 2,
+              total_units_zone: 14,
+              injection_pattern: "v_shape_grid",
+              injection_points: [
+                { id: "f1", type: "frontalis", muscle: "Frontal", units: 2, depth: "superficial", coordinates: { x: 0.35, y: 0.18 }, safety_warning: false },
+                { id: "f2", type: "frontalis", muscle: "Frontal", units: 2, depth: "superficial", coordinates: { x: 0.42, y: 0.15 }, safety_warning: false },
+                { id: "f3", type: "frontalis", muscle: "Frontal", units: 3, depth: "superficial", coordinates: { x: 0.50, y: 0.12 }, safety_warning: false },
+                { id: "f4", type: "frontalis", muscle: "Frontal", units: 2, depth: "superficial", coordinates: { x: 0.58, y: 0.15 }, safety_warning: false },
+                { id: "f5", type: "frontalis", muscle: "Frontal", units: 2, depth: "superficial", coordinates: { x: 0.65, y: 0.18 }, safety_warning: false },
+                { id: "f6", type: "frontalis", muscle: "Frontal", units: 3, depth: "superficial", coordinates: { x: 0.50, y: 0.20 }, safety_warning: false }
+              ]
+            },
+            {
+              zone_name: "Periorbital",
+              anatomy_target: "Orbicular dos Olhos",
+              severity_scale_merz: 2,
+              total_units_zone: 20,
+              injection_pattern: "fan_pattern",
+              injection_points: [
+                { id: "o1", type: "orbicularis", muscle: "Orbicular Esquerdo", units: 3, depth: "superficial", coordinates: { x: 0.26, y: 0.38 }, safety_warning: false },
+                { id: "o2", type: "orbicularis", muscle: "Orbicular Esquerdo", units: 4, depth: "superficial", coordinates: { x: 0.24, y: 0.42 }, safety_warning: false },
+                { id: "o3", type: "orbicularis", muscle: "Orbicular Esquerdo", units: 3, depth: "superficial", coordinates: { x: 0.26, y: 0.46 }, safety_warning: false },
+                { id: "o4", type: "orbicularis", muscle: "Orbicular Direito", units: 3, depth: "superficial", coordinates: { x: 0.74, y: 0.38 }, safety_warning: false },
+                { id: "o5", type: "orbicularis", muscle: "Orbicular Direito", units: 4, depth: "superficial", coordinates: { x: 0.76, y: 0.42 }, safety_warning: false },
+                { id: "o6", type: "orbicularis", muscle: "Orbicular Direito", units: 3, depth: "superficial", coordinates: { x: 0.74, y: 0.46 }, safety_warning: false }
+              ]
+            }
+          ],
+          safety_zones_to_avoid: [
+            {
+              region: "Margem Orbital Superior",
+              reason: "Risco de Ptose Palpebral",
+              polygon_coordinates: [
+                { x: 0.35, y: 0.36 },
+                { x: 0.65, y: 0.36 },
+                { x: 0.65, y: 0.40 },
+                { x: 0.35, y: 0.40 }
+              ]
+            }
+          ]
+        },
+        clinical_notes: "Análise padrão para tratamento facial do terço superior. Recomenda-se avaliação individualizada da dinâmica muscular. Ajuste as dosagens conforme a massa muscular e histórico do paciente.",
+        confidence: 0.75,
+        // Legacy format
+        injectionPoints: [
+          { id: "g1", muscle: "Procerus", x: 50, y: 35, depth: "deep", dosage: 4, notes: "", relativeX: 0.50, relativeY: 0.35 },
+          { id: "g2", muscle: "Corrugador Esquerdo", x: 44, y: 33, depth: "deep", dosage: 5, notes: "", relativeX: 0.44, relativeY: 0.33 },
+          { id: "g3", muscle: "Corrugador Esquerdo", x: 38, y: 31, depth: "superficial", dosage: 3, notes: "Zona de cuidado", relativeX: 0.38, relativeY: 0.31, safetyWarning: true },
+          { id: "g4", muscle: "Corrugador Direito", x: 56, y: 33, depth: "deep", dosage: 5, notes: "", relativeX: 0.56, relativeY: 0.33 },
+          { id: "g5", muscle: "Corrugador Direito", x: 62, y: 31, depth: "superficial", dosage: 3, notes: "Zona de cuidado", relativeX: 0.62, relativeY: 0.31, safetyWarning: true },
+          { id: "f1", muscle: "Frontal", x: 35, y: 18, depth: "superficial", dosage: 2, notes: "", relativeX: 0.35, relativeY: 0.18 },
+          { id: "f2", muscle: "Frontal", x: 42, y: 15, depth: "superficial", dosage: 2, notes: "", relativeX: 0.42, relativeY: 0.15 },
+          { id: "f3", muscle: "Frontal", x: 50, y: 12, depth: "superficial", dosage: 3, notes: "", relativeX: 0.50, relativeY: 0.12 },
+          { id: "f4", muscle: "Frontal", x: 58, y: 15, depth: "superficial", dosage: 2, notes: "", relativeX: 0.58, relativeY: 0.15 },
+          { id: "f5", muscle: "Frontal", x: 65, y: 18, depth: "superficial", dosage: 2, notes: "", relativeX: 0.65, relativeY: 0.18 },
+          { id: "f6", muscle: "Frontal", x: 50, y: 20, depth: "superficial", dosage: 3, notes: "", relativeX: 0.50, relativeY: 0.20 },
+          { id: "o1", muscle: "Orbicular Esquerdo", x: 26, y: 38, depth: "superficial", dosage: 3, notes: "", relativeX: 0.26, relativeY: 0.38 },
+          { id: "o2", muscle: "Orbicular Esquerdo", x: 24, y: 42, depth: "superficial", dosage: 4, notes: "", relativeX: 0.24, relativeY: 0.42 },
+          { id: "o3", muscle: "Orbicular Esquerdo", x: 26, y: 46, depth: "superficial", dosage: 3, notes: "", relativeX: 0.26, relativeY: 0.46 },
+          { id: "o4", muscle: "Orbicular Direito", x: 74, y: 38, depth: "superficial", dosage: 3, notes: "", relativeX: 0.74, relativeY: 0.38 },
+          { id: "o5", muscle: "Orbicular Direito", x: 76, y: 42, depth: "superficial", dosage: 4, notes: "", relativeX: 0.76, relativeY: 0.42 },
+          { id: "o6", muscle: "Orbicular Direito", x: 74, y: 46, depth: "superficial", dosage: 3, notes: "", relativeX: 0.74, relativeY: 0.46 }
+        ],
+        totalDosage: { procerus: 4, corrugator: 16, frontalis: 14, orbicularis_oculi: 20, other: 0, total: 54 },
+        clinicalNotes: "Análise padrão para tratamento facial do terço superior.",
+        safetyZones: [
+          {
+            region: "Margem Orbital Superior",
+            reason: "Risco de Ptose Palpebral",
+            polygon_coordinates: [
+              { x: 0.35, y: 0.36 },
+              { x: 0.65, y: 0.36 },
+              { x: 0.65, y: 0.40 },
+              { x: 0.35, y: 0.40 }
+            ]
+          }
+        ]
       };
     }
 
-    console.log("Analysis complete:", analysis);
+    console.log("Analysis complete");
 
     return new Response(
       JSON.stringify(analysis),
