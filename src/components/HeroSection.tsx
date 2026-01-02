@@ -95,9 +95,9 @@ export const HeroSection = () => {
               initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.7, delay: 0.2 }}
-              className="relative lg:block hidden"
+              className="relative"
             >
-              <div className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-primary/30 shadow-2xl">
+              <div className="relative aspect-square lg:aspect-[3/4] rounded-2xl overflow-hidden border border-primary/30 shadow-2xl max-w-md mx-auto lg:max-w-none">
                 {/* Golden light effect */}
                 <div className="absolute inset-0 bg-gradient-to-br from-accent/30 via-transparent to-primary/30 mix-blend-overlay" />
                 <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
