@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Shield, Sparkles, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { z } from "zod";
+import loginDoctorImage from "@/assets/login-doctor.jpg";
 
 const authSchema = z.object({
   email: z.string().email("Email inválido").max(255),
@@ -72,9 +73,19 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex">
-      {/* Lado Esquerdo - Imagem Artística */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-primary via-primary/90 to-primary/70 overflow-hidden">
-        {/* Overlay Pattern */}
+      {/* Lado Esquerdo - Imagem Profissional */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+        {/* Background Image */}
+        <img 
+          src={loginDoctorImage} 
+          alt="Profissional de Estética"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        
+        {/* Overlay Gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/80 via-primary/60 to-accent/40" />
+        
+        {/* Pattern Overlay */}
         <div className="absolute inset-0 opacity-10">
           <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
             <defs>
@@ -87,29 +98,47 @@ const Login = () => {
         </div>
         
         {/* Conteúdo */}
-        <div className="relative z-10 flex flex-col justify-center items-center p-12 text-white">
-          <div className="mb-8">
-            <svg className="w-48 h-48 opacity-90" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <ellipse cx="100" cy="100" rx="70" ry="90" stroke="currentColor" strokeWidth="2" fill="none"/>
-              <path d="M60 70 Q100 60 140 70" stroke="hsl(var(--accent))" strokeWidth="2" fill="none"/>
-              <path d="M70 85 Q100 80 130 85" stroke="hsl(var(--accent))" strokeWidth="1.5" fill="none"/>
-              <path d="M80 100 Q100 95 120 100" stroke="hsl(var(--accent))" strokeWidth="1" fill="none"/>
-              <circle cx="75" cy="75" r="4" fill="hsl(var(--accent))"/>
-              <circle cx="125" cy="75" r="4" fill="hsl(var(--accent))"/>
-              <circle cx="100" cy="65" r="4" fill="hsl(var(--accent))"/>
-              <circle cx="85" cy="82" r="3" fill="hsl(var(--accent))" opacity="0.7"/>
-              <circle cx="115" cy="82" r="3" fill="hsl(var(--accent))" opacity="0.7"/>
-            </svg>
+        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full h-full">
+          {/* Logo */}
+          <div>
+            <h2 className="text-2xl font-serif font-bold tracking-wide">NeuroAesthetics</h2>
+            <p className="text-white/70 text-sm mt-1">Plataforma de Análise Facial</p>
           </div>
           
-          <h2 className="text-3xl font-light mb-4 text-center">
-            Precisão Científica
-          </h2>
-          <p className="text-white/80 text-center max-w-md leading-relaxed">
-            Plataforma de análise facial baseada em evidências para profissionais que buscam excelência em harmonização.
-          </p>
+          {/* Central Content */}
+          <div className="max-w-md">
+            <h2 className="text-4xl font-serif font-bold mb-4 leading-tight">
+              Precisão Científica na Harmonização Facial
+            </h2>
+            <p className="text-white/80 leading-relaxed">
+              Plataforma de análise facial baseada em evidências para profissionais que buscam excelência em seus procedimentos.
+            </p>
+            
+            {/* Features */}
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-accent" />
+                </div>
+                <span className="text-white/90">Protocolos validados por especialistas</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-accent" />
+                </div>
+                <span className="text-white/90">Análise anatômica com IA avançada</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-accent" />
+                </div>
+                <span className="text-white/90">Resultados previsíveis e seguros</span>
+              </div>
+            </div>
+          </div>
           
-          <div className="mt-12 flex gap-6">
+          {/* Stats */}
+          <div className="flex gap-8">
             <div className="text-center">
               <div className="text-3xl font-light text-accent">98%</div>
               <div className="text-xs text-white/60 mt-1">Precisão</div>
@@ -127,8 +156,9 @@ const Login = () => {
           </div>
         </div>
         
-        <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-accent/20 rounded-full blur-3xl"/>
-        <div className="absolute -top-10 -left-10 w-60 h-60 bg-white/5 rounded-full blur-2xl"/>
+        {/* Decorative Elements */}
+        <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-accent/30 rounded-full blur-3xl"/>
+        <div className="absolute -top-10 -left-10 w-60 h-60 bg-white/10 rounded-full blur-2xl"/>
       </div>
 
       {/* Lado Direito - Formulário */}
