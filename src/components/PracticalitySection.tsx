@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import practicalityImage from "@/assets/practicality-facial-mapping.jpg";
 
 export const PracticalitySection = () => {
   return (
@@ -17,23 +18,12 @@ export const PracticalitySection = () => {
             className="relative"
           >
             <div className="aspect-[4/5] rounded-2xl overflow-hidden border border-primary/20 shadow-xl relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/10 z-10" />
               <img 
-                src="/placeholder.svg" 
-                alt="Análise Facial com Overlay Anatômico"
+                src={practicalityImage} 
+                alt="Mapeamento Anatômico Facial com IA"
                 className="w-full h-full object-cover"
               />
-              {/* Overlay gráfico simulado */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <svg className="w-3/4 h-3/4 opacity-60" viewBox="0 0 200 200">
-                  <circle cx="100" cy="80" r="3" fill="hsl(var(--accent))" />
-                  <circle cx="100" cy="100" r="3" fill="hsl(var(--accent))" />
-                  <circle cx="100" cy="120" r="3" fill="hsl(var(--accent))" />
-                  <line x1="100" y1="80" x2="100" y2="120" stroke="hsl(var(--accent))" strokeWidth="1" />
-                  <line x1="80" y1="80" x2="120" y2="80" stroke="hsl(var(--accent))" strokeWidth="1" strokeDasharray="2,2" />
-                  <line x1="80" y1="120" x2="120" y2="120" stroke="hsl(var(--accent))" strokeWidth="1" strokeDasharray="2,2" />
-                </svg>
-              </div>
             </div>
           </motion.div>
 
