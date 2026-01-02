@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { FileText, Brain, Shield } from "lucide-react";
+import featuresImage from "@/assets/features-ai-tech.jpg";
 
 const features = [
   {
@@ -37,6 +38,31 @@ export const FeaturesGrid = () => {
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto font-light">
             Eleve o padrão do seu atendimento com ferramentas desenhadas para profissionais exigentes.
           </p>
+        </motion.div>
+
+        {/* Featured image section */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="max-w-4xl mx-auto mb-16"
+        >
+          <div className="relative aspect-video md:aspect-[21/9] rounded-2xl overflow-hidden border border-primary/20 shadow-xl">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-transparent to-accent/20 z-10" />
+            <img 
+              src={featuresImage} 
+              alt="Tecnologia de Análise Facial com IA"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 flex items-center justify-center z-20">
+              <div className="bg-background/80 backdrop-blur-md rounded-2xl p-6 border border-primary/20 text-center max-w-md">
+                <Brain className="h-12 w-12 text-primary mx-auto mb-3" />
+                <p className="text-lg font-serif font-semibold text-foreground">Mapeamento Facial Avançado</p>
+                <p className="text-sm text-muted-foreground">Precisão anatômica guiada por IA</p>
+              </div>
+            </div>
+          </div>
         </motion.div>
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
