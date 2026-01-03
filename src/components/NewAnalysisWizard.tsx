@@ -94,6 +94,7 @@ export function NewAnalysisWizard() {
   const [selectedPoint, setSelectedPoint] = useState<InjectionPoint | null>(null);
   const [showMuscles, setShowMuscles] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [showDangerZones, setShowDangerZones] = useState(true);
   const [showExpandedPhotos, setShowExpandedPhotos] = useState(false);
   
   // Temporary photo URLs for preview and AI analysis
@@ -379,6 +380,8 @@ export function NewAnalysisWizard() {
         confidence: aiAnalysis.confidence,
         doctorName,
         clinicName,
+        productName: TOXIN_PRODUCTS.find(p => p.id === selectedProduct)?.name || 'Botox®',
+        includeTCLE: true,
       });
 
       toast({
@@ -797,7 +800,7 @@ export function NewAnalysisWizard() {
                     <Crosshair className="w-5 h-5 text-primary" />
                     Modelo Anatômico 3D
                   </CardTitle>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
                       <Switch
                         id="show-muscles"
@@ -820,6 +823,16 @@ export function NewAnalysisWizard() {
                         Legendas
                       </Label>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="show-danger-zones"
+                        checked={showDangerZones}
+                        onCheckedChange={setShowDangerZones}
+                      />
+                      <Label htmlFor="show-danger-zones" className="text-xs flex items-center gap-1 cursor-pointer text-red-500">
+                        ⚠️ Zonas de Perigo
+                      </Label>
+                    </div>
                   </div>
                 </div>
               </CardHeader>
@@ -830,6 +843,7 @@ export function NewAnalysisWizard() {
                     onPointClick={setSelectedPoint}
                     showMuscles={showMuscles}
                     showLabels={showLabels}
+                    showDangerZones={showDangerZones}
                   />
                 </div>
               </CardContent>

@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, TrendingUp, TrendingDown, Minus, Calendar, User } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { ArrowRight, TrendingUp, TrendingDown, Minus, Calendar, User, SlidersHorizontal, ImageIcon, FileDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { InjectionPoint } from "./Face3DViewer";
 import { Json } from "@/integrations/supabase/types";
@@ -21,7 +22,10 @@ interface Analysis {
   frontal_photo_url: string | null;
   resting_photo_url: string | null;
   glabellar_photo_url: string | null;
+  smile_photo_url: string | null;
   patient_id: string;
+  patient_gender: string | null;
+  product_type: string | null;
 }
 
 interface Patient {
@@ -43,6 +47,104 @@ function parseInjectionPoints(data: Json | null): InjectionPoint[] | null {
   return null;
 }
 
+// Interactive photo comparison slider
+function PhotoComparisonSlider({ 
+  beforeUrl, 
+  afterUrl, 
+  beforeDate, 
+  afterDate 
+}: { 
+  beforeUrl: string | null;
+  afterUrl: string | null;
+  beforeDate: string;
+  afterDate: string;
+}) {
+  const [sliderValue, setSliderValue] = useState([50]);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  if (!beforeUrl && !afterUrl) {
+    return (
+      <div className="aspect-video rounded-lg bg-muted/20 border border-border/50 flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Sem fotos para comparação</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div 
+        ref={containerRef}
+        className="relative aspect-[4/3] rounded-lg overflow-hidden bg-muted/20 border border-border/50"
+      >
+        {/* After image (background) */}
+        {afterUrl && (
+          <img
+            src={afterUrl}
+            alt="Depois"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+        
+        {/* Before image (clipped) */}
+        {beforeUrl && (
+          <div 
+            className="absolute inset-0 overflow-hidden"
+            style={{ width: `${sliderValue[0]}%` }}
+          >
+            <img
+              src={beforeUrl}
+              alt="Antes"
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{ 
+                width: containerRef.current ? `${containerRef.current.offsetWidth}px` : '100%',
+                maxWidth: 'none'
+              }}
+            />
+          </div>
+        )}
+
+        {/* Slider line */}
+        <div 
+          className="absolute top-0 bottom-0 w-1 bg-white shadow-lg z-10"
+          style={{ left: `${sliderValue[0]}%`, transform: 'translateX(-50%)' }}
+        >
+          {/* Handle */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white rounded-full shadow-xl flex items-center justify-center border-2 border-primary">
+            <SlidersHorizontal className="w-5 h-5 text-primary" />
+          </div>
+        </div>
+
+        {/* Labels */}
+        <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
+          Antes • {beforeDate}
+        </div>
+        <div className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
+          Depois • {afterDate}
+        </div>
+      </div>
+
+      {/* Slider control */}
+      <div className="px-4">
+        <Slider
+          value={sliderValue}
+          onValueChange={setSliderValue}
+          min={0}
+          max={100}
+          step={1}
+          className="cursor-pointer"
+        />
+        <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+          <span>← Antes</span>
+          <span>Depois →</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BeforeAfterComparison({ patientId, onClose }: BeforeAfterComparisonProps) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<string | null>(patientId || null);
@@ -50,6 +152,7 @@ export function BeforeAfterComparison({ patientId, onClose }: BeforeAfterCompari
   const [beforeAnalysis, setBeforeAnalysis] = useState<Analysis | null>(null);
   const [afterAnalysis, setAfterAnalysis] = useState<Analysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"slider" | "side-by-side">("slider");
 
   // Carregar pacientes
   useEffect(() => {
@@ -114,6 +217,10 @@ export function BeforeAfterComparison({ patientId, onClose }: BeforeAfterCompari
   const totalAfter = (afterAnalysis?.procerus_dosage || 0) + (afterAnalysis?.corrugator_dosage || 0);
   const totalChange = calculateDosageChange(totalBefore, totalAfter);
 
+  const daysBetween = beforeAnalysis && afterAnalysis 
+    ? differenceInDays(new Date(afterAnalysis.created_at), new Date(beforeAnalysis.created_at))
+    : 0;
+
   if (isLoading) {
     return (
       <Card className="border-border/50">
@@ -127,10 +234,32 @@ export function BeforeAfterComparison({ patientId, onClose }: BeforeAfterCompari
   return (
     <Card className="border-border/50">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          Comparativo de Evolução
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            Comparativo de Evolução
+          </CardTitle>
+          {beforeAnalysis && afterAnalysis && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant={viewMode === "slider" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("slider")}
+              >
+                <SlidersHorizontal className="w-4 h-4 mr-1" />
+                Slider
+              </Button>
+              <Button
+                variant={viewMode === "side-by-side" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("side-by-side")}
+              >
+                <ImageIcon className="w-4 h-4 mr-1" />
+                Lado a Lado
+              </Button>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Seletor de Paciente */}
@@ -204,55 +333,75 @@ export function BeforeAfterComparison({ patientId, onClose }: BeforeAfterCompari
           </div>
         )}
 
+        {/* Intervalo entre análises */}
+        {beforeAnalysis && afterAnalysis && daysBetween > 0 && (
+          <div className="flex justify-center">
+            <Badge variant="outline" className="text-sm">
+              <Calendar className="w-3 h-3 mr-1" />
+              Intervalo: {daysBetween} dias
+            </Badge>
+          </div>
+        )}
+
         {/* Comparação Visual */}
         {beforeAnalysis && afterAnalysis && (
           <>
-            {/* Fotos Antes/Depois */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-1">
-                <p className="text-sm font-medium mb-2 text-center">Antes</p>
-                <p className="text-xs text-muted-foreground text-center mb-2">
-                  {format(new Date(beforeAnalysis.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                </p>
-                <div className="aspect-square rounded-lg overflow-hidden bg-muted/20 border border-border/50">
-                  {beforeAnalysis.resting_photo_url ? (
-                    <img
-                      src={beforeAnalysis.resting_photo_url}
-                      alt="Antes"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      Sem foto
-                    </div>
-                  )}
+            {/* Photo Comparison */}
+            {viewMode === "slider" ? (
+              <PhotoComparisonSlider
+                beforeUrl={beforeAnalysis.resting_photo_url}
+                afterUrl={afterAnalysis.resting_photo_url}
+                beforeDate={format(new Date(beforeAnalysis.created_at), "dd/MM/yy", { locale: ptBR })}
+                afterDate={format(new Date(afterAnalysis.created_at), "dd/MM/yy", { locale: ptBR })}
+              />
+            ) : (
+              /* Side by Side View */
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-1">
+                  <p className="text-sm font-medium mb-2 text-center">Antes</p>
+                  <p className="text-xs text-muted-foreground text-center mb-2">
+                    {format(new Date(beforeAnalysis.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                  </p>
+                  <div className="aspect-square rounded-lg overflow-hidden bg-muted/20 border border-border/50">
+                    {beforeAnalysis.resting_photo_url ? (
+                      <img
+                        src={beforeAnalysis.resting_photo_url}
+                        alt="Antes"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                        Sem foto
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="col-span-1 flex items-center justify-center">
+                  <ArrowRight className="w-8 h-8 text-primary" />
+                </div>
+
+                <div className="col-span-1">
+                  <p className="text-sm font-medium mb-2 text-center">Depois</p>
+                  <p className="text-xs text-muted-foreground text-center mb-2">
+                    {format(new Date(afterAnalysis.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                  </p>
+                  <div className="aspect-square rounded-lg overflow-hidden bg-muted/20 border border-border/50">
+                    {afterAnalysis.resting_photo_url ? (
+                      <img
+                        src={afterAnalysis.resting_photo_url}
+                        alt="Depois"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                        Sem foto
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              <div className="col-span-1 flex items-center justify-center">
-                <ArrowRight className="w-8 h-8 text-primary" />
-              </div>
-
-              <div className="col-span-1">
-                <p className="text-sm font-medium mb-2 text-center">Depois</p>
-                <p className="text-xs text-muted-foreground text-center mb-2">
-                  {format(new Date(afterAnalysis.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                </p>
-                <div className="aspect-square rounded-lg overflow-hidden bg-muted/20 border border-border/50">
-                  {afterAnalysis.resting_photo_url ? (
-                    <img
-                      src={afterAnalysis.resting_photo_url}
-                      alt="Depois"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      Sem foto
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            )}
 
             {/* Comparação de Dosagens */}
             <div className="space-y-4">
@@ -297,6 +446,22 @@ export function BeforeAfterComparison({ patientId, onClose }: BeforeAfterCompari
                 </div>
               </div>
             </div>
+
+            {/* Produtos utilizados */}
+            {(beforeAnalysis.product_type || afterAnalysis.product_type) && (
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>Produtos: </span>
+                {beforeAnalysis.product_type && (
+                  <Badge variant="outline">{beforeAnalysis.product_type}</Badge>
+                )}
+                {afterAnalysis.product_type && beforeAnalysis.product_type !== afterAnalysis.product_type && (
+                  <>
+                    <ArrowRight className="w-4 h-4" />
+                    <Badge variant="outline">{afterAnalysis.product_type}</Badge>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Observações */}
             {(beforeAnalysis.ai_clinical_notes || afterAnalysis.ai_clinical_notes) && (

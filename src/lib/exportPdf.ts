@@ -7,6 +7,7 @@ import { ptBR } from "date-fns/locale";
 interface PatientData {
   name: string;
   age?: string | number | null;
+  gender?: string;
   observations?: string;
 }
 
@@ -27,6 +28,8 @@ interface ExportData {
   photoUrl?: string | null;
   clinicName?: string;
   doctorName?: string;
+  productName?: string;
+  includeTCLE?: boolean;
 }
 
 const MUSCLE_LABELS: Record<string, string> = {
@@ -46,6 +49,154 @@ const MUSCLE_LABELS: Record<string, string> = {
   masseter: "Masseter",
 };
 
+// TCLE content based on CFM Resolution 2.217/2018 and 1.974/2011
+function generateTCLEPage(pdf: jsPDF, data: ExportData) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 15;
+  const contentWidth = pageWidth - margin * 2;
+  
+  pdf.addPage();
+  let y = margin;
+
+  const primaryColor: [number, number, number] = [184, 140, 80];
+  const textColor: [number, number, number] = [40, 40, 40];
+
+  // Header
+  pdf.setFillColor(...primaryColor);
+  pdf.rect(0, 0, pageWidth, 20, "F");
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.setTextColor(255, 255, 255);
+  pdf.text("TERMO DE CONSENTIMENTO LIVRE E ESCLARECIDO", pageWidth / 2, 13, { align: "center" });
+  
+  y = 30;
+
+  pdf.setTextColor(...textColor);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(10);
+  pdf.text("APLICAÇÃO DE TOXINA BOTULÍNICA PARA FINS ESTÉTICOS", pageWidth / 2, y, { align: "center" });
+  y += 10;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+
+  // Patient identification
+  pdf.setFont("helvetica", "bold");
+  pdf.text("IDENTIFICAÇÃO DO PACIENTE:", margin, y);
+  y += 6;
+  pdf.setFont("helvetica", "normal");
+  pdf.text(`Nome: ${data.patient.name}`, margin, y);
+  y += 5;
+  if (data.patient.age) {
+    pdf.text(`Idade: ${data.patient.age} anos`, margin, y);
+    y += 5;
+  }
+  pdf.text(`Data: ${format(new Date(), "dd/MM/yyyy")}`, margin, y);
+  y += 10;
+
+  // TCLE Text based on CFM guidelines
+  const tcleContent = [
+    "Declaro, para os devidos fins, que:",
+    "",
+    "1. Fui informado(a) de que a toxina botulínica é uma substância que age nos músculos, provocando relaxamento temporário da musculatura tratada, com objetivo de suavizar linhas de expressão e rugas dinâmicas.",
+    "",
+    "2. Compreendi que o procedimento consiste na aplicação de pequenas quantidades de toxina botulínica através de agulhas finas em pontos específicos da face, conforme planejamento individualizado.",
+    "",
+    "3. Fui esclarecido(a) sobre os possíveis efeitos colaterais, que podem incluir:",
+    "   • Dor, vermelhidão ou edema no local da aplicação (temporários)",
+    "   • Hematomas (equimoses) nos pontos de aplicação",
+    "   • Cefaleia (dor de cabeça) nas primeiras 24-48 horas",
+    "   • Ptose palpebral (queda temporária da pálpebra) - raro",
+    "   • Assimetria facial temporária",
+    "   • Resultados insatisfatórios que podem necessitar de retoques",
+    "",
+    "4. Entendo que o efeito da toxina botulínica é TEMPORÁRIO, com duração média de 3 a 6 meses, podendo variar conforme características individuais, e que serão necessárias novas aplicações para manutenção dos resultados.",
+    "",
+    "5. Fui orientado(a) sobre os cuidados pós-procedimento:",
+    "   • Não deitar nas primeiras 4 horas após a aplicação",
+    "   • Evitar manipular a região tratada por 24 horas",
+    "   • Evitar exercícios físicos intensos por 24 horas",
+    "   • Não realizar procedimentos faciais por 7 dias",
+    "",
+    "6. Informei ao médico sobre todas as condições de saúde, medicamentos em uso, alergias conhecidas, gestação ou amamentação, e doenças neuromusculares.",
+    "",
+    "7. Estou ciente de que este procedimento é realizado em conformidade com as Resoluções CFM nº 2.217/2018 (Código de Ética Médica) e nº 1.974/2011 (publicidade médica).",
+  ];
+
+  tcleContent.forEach((line) => {
+    if (y > pageHeight - 50) {
+      pdf.addPage();
+      y = margin;
+    }
+    
+    const splitLine = pdf.splitTextToSize(line, contentWidth);
+    pdf.text(splitLine, margin, y);
+    y += splitLine.length * 4;
+  });
+
+  y += 5;
+
+  // Product information
+  if (data.productName) {
+    pdf.setFont("helvetica", "bold");
+    pdf.text("PRODUTO UTILIZADO:", margin, y);
+    y += 5;
+    pdf.setFont("helvetica", "normal");
+    pdf.text(data.productName, margin, y);
+    y += 8;
+  }
+
+  // Dosage summary
+  pdf.setFont("helvetica", "bold");
+  pdf.text("DOSAGEM TOTAL APLICADA:", margin, y);
+  y += 5;
+  pdf.setFont("helvetica", "normal");
+  pdf.text(`${data.totalDosage.total} Unidades`, margin, y);
+  y += 15;
+
+  // Consent declaration
+  if (y > pageHeight - 60) {
+    pdf.addPage();
+    y = margin;
+  }
+
+  pdf.setFont("helvetica", "bold");
+  pdf.text("DECLARAÇÃO DE CONSENTIMENTO:", margin, y);
+  y += 6;
+  pdf.setFont("helvetica", "normal");
+  
+  const declaration = "Declaro que li, compreendi e concordo com todas as informações contidas neste documento. Tive a oportunidade de esclarecer minhas dúvidas e autorizo a realização do procedimento descrito acima de forma livre e esclarecida.";
+  const splitDeclaration = pdf.splitTextToSize(declaration, contentWidth);
+  pdf.text(splitDeclaration, margin, y);
+  y += splitDeclaration.length * 4 + 15;
+
+  // Signature lines
+  const signatureY = Math.min(y + 10, pageHeight - 45);
+  
+  pdf.setDrawColor(100, 100, 100);
+  pdf.setLineWidth(0.3);
+
+  // Patient signature
+  pdf.line(margin, signatureY, margin + 70, signatureY);
+  pdf.setFontSize(8);
+  pdf.text("Assinatura do Paciente", margin, signatureY + 5);
+  pdf.text(`Nome: ${data.patient.name}`, margin, signatureY + 10);
+
+  // Doctor signature
+  pdf.line(pageWidth - margin - 70, signatureY, pageWidth - margin, signatureY);
+  pdf.text("Assinatura do Médico", pageWidth - margin - 70, signatureY + 5);
+  if (data.doctorName) {
+    pdf.text(`Dr(a). ${data.doctorName}`, pageWidth - margin - 70, signatureY + 10);
+  }
+
+  // Footer
+  const footerY = pageHeight - 10;
+  pdf.setFontSize(7);
+  pdf.setTextColor(120, 120, 120);
+  pdf.text("Documento gerado eletronicamente por NeuroAesthetics em conformidade com as resoluções do CFM.", pageWidth / 2, footerY, { align: "center" });
+}
+
 export async function exportAnalysisPdf(data: ExportData): Promise<void> {
   const pdf = new jsPDF({
     orientation: "portrait",
@@ -59,7 +210,7 @@ export async function exportAnalysisPdf(data: ExportData): Promise<void> {
   let y = margin;
 
   // Cores do tema
-  const primaryColor: [number, number, number] = [184, 140, 80]; // Dourado
+  const primaryColor: [number, number, number] = [184, 140, 80];
   const textColor: [number, number, number] = [60, 55, 50];
   const mutedColor: [number, number, number] = [120, 115, 110];
 
@@ -97,6 +248,16 @@ export async function exportAnalysisPdf(data: ExportData): Promise<void> {
 
   if (data.patient.age) {
     pdf.text(`Idade: ${data.patient.age} anos`, margin, y);
+    y += 5;
+  }
+
+  if (data.patient.gender) {
+    pdf.text(`Sexo: ${data.patient.gender === 'masculino' ? 'Masculino' : 'Feminino'}`, margin, y);
+    y += 5;
+  }
+
+  if (data.productName) {
+    pdf.text(`Produto: ${data.productName}`, margin, y);
     y += 5;
   }
 
@@ -242,6 +403,11 @@ export async function exportAnalysisPdf(data: ExportData): Promise<void> {
   }
 
   pdf.text("Gerado por NeuroAesthetics", pageWidth - margin - pdf.getTextWidth("Gerado por NeuroAesthetics"), footerY);
+
+  // Add TCLE page if requested (default true)
+  if (data.includeTCLE !== false) {
+    generateTCLEPage(pdf, data);
+  }
 
   // Salvar PDF
   const fileName = `analise-${data.patient.name.replace(/\s+/g, "-").toLowerCase()}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
