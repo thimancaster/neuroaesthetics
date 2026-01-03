@@ -5,17 +5,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Upload, ArrowLeft, ArrowRight, Check, User, Camera, Crosshair, Loader2, FolderOpen, X, Sparkles, Brain, Eye, Tag, FileDown } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Upload, ArrowLeft, ArrowRight, Check, User, Camera, Crosshair, Loader2, FolderOpen, X, Sparkles, Brain, Eye, Tag, FileDown, Activity } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CameraCapture, PhotoType } from "./CameraCapture";
 import { Face3DViewer, InjectionPoint } from "./Face3DViewer";
 import { DosageSafetyAlert } from "./DosageSafetyAlert";
+import { ProductSelector, TOXIN_PRODUCTS } from "./ProductSelector";
+import { TreatmentTemplates } from "./TreatmentTemplates";
 import { exportAnalysisPdf } from "@/lib/exportPdf";
 
 interface PatientData {
   name: string;
   age: string;
+  gender: "feminino" | "masculino";
+  muscleStrength: "low" | "medium" | "high";
   observations: string;
 }
 
@@ -23,6 +28,11 @@ interface PhotoData {
   resting: File | null;
   glabellar: File | null;
   frontal: File | null;
+  smile: File | null;
+  nasal: File | null;
+  perioral: File | null;
+  profile_left: File | null;
+  profile_right: File | null;
 }
 
 interface AIAnalysis {
@@ -39,6 +49,17 @@ interface AIAnalysis {
   confidence: number;
 }
 
+const PHOTO_TYPES: { key: PhotoType; label: string; desc: string; required?: boolean }[] = [
+  { key: "resting", label: "Face em Repouso", desc: "Expressão neutra", required: true },
+  { key: "glabellar", label: "Contração Glabelar", desc: "Expressão 'Bravo'", required: true },
+  { key: "frontal", label: "Contração Frontal", desc: "Expressão 'Surpresa'" },
+  { key: "smile", label: "Sorriso Forçado", desc: "Pés de galinha" },
+  { key: "nasal", label: "Contração Nasal", desc: "Bunny Lines" },
+  { key: "perioral", label: "Contração Perioral", desc: "Código de barras" },
+  { key: "profile_left", label: "Perfil Esquerdo", desc: "Lado esquerdo" },
+  { key: "profile_right", label: "Perfil Direito", desc: "Lado direito" },
+];
+
 export function NewAnalysisWizard() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -46,9 +67,15 @@ export function NewAnalysisWizard() {
   const [cameraOpen, setCameraOpen] = useState<PhotoType | null>(null);
   const { toast } = useToast();
   
+  // Product/toxin selection state
+  const [selectedProduct, setSelectedProduct] = useState("botox");
+  const [conversionFactor, setConversionFactor] = useState(1.0);
+  
   const [patientData, setPatientData] = useState<PatientData>({
     name: "",
     age: "",
+    gender: "feminino",
+    muscleStrength: "medium",
     observations: "",
   });
   
@@ -56,29 +83,78 @@ export function NewAnalysisWizard() {
     resting: null,
     glabellar: null,
     frontal: null,
+    smile: null,
+    nasal: null,
+    perioral: null,
+    profile_left: null,
+    profile_right: null,
   });
   
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<InjectionPoint | null>(null);
   const [showMuscles, setShowMuscles] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+  const [showExpandedPhotos, setShowExpandedPhotos] = useState(false);
   
   // Temporary photo URLs for preview and AI analysis
-  const [photoUrls, setPhotoUrls] = useState<{
-    resting: string | null;
-    glabellar: string | null;
-    frontal: string | null;
-  }>({
+  const [photoUrls, setPhotoUrls] = useState<Record<PhotoType, string | null>>({
     resting: null,
     glabellar: null,
     frontal: null,
+    smile: null,
+    nasal: null,
+    perioral: null,
+    profile_left: null,
+    profile_right: null,
   });
+
+  const handleProductChange = (productId: string, factor: number) => {
+    const previousFactor = conversionFactor;
+    setSelectedProduct(productId);
+    setConversionFactor(factor);
+    
+    // Recalculate dosages if we already have analysis
+    if (aiAnalysis && factor !== previousFactor) {
+      const ratio = factor / previousFactor;
+      const updatedPoints = aiAnalysis.injectionPoints.map(p => ({
+        ...p,
+        dosage: Math.round(p.dosage * ratio)
+      }));
+      
+      const procerusTotal = updatedPoints
+        .filter(p => p.muscle === "procerus")
+        .reduce((sum, p) => sum + p.dosage, 0);
+      
+      const corrugatorTotal = updatedPoints
+        .filter(p => p.muscle.startsWith("corrugator"))
+        .reduce((sum, p) => sum + p.dosage, 0);
+      
+      const frontalisTotal = updatedPoints
+        .filter(p => p.muscle === "frontalis")
+        .reduce((sum, p) => sum + p.dosage, 0);
+      
+      const orbicularisTotal = updatedPoints
+        .filter(p => p.muscle.startsWith("orbicularis_oculi"))
+        .reduce((sum, p) => sum + p.dosage, 0);
+      
+      setAiAnalysis({
+        ...aiAnalysis,
+        injectionPoints: updatedPoints,
+        totalDosage: {
+          procerus: procerusTotal,
+          corrugator: corrugatorTotal,
+          frontalis: frontalisTotal,
+          orbicularis_oculi: orbicularisTotal,
+          total: procerusTotal + corrugatorTotal + frontalisTotal + orbicularisTotal
+        }
+      });
+    }
+  };
 
   const handlePhotoUpload = (type: PhotoType) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setPhotos(prev => ({ ...prev, [type]: file }));
-      // Create preview URL
       const url = URL.createObjectURL(file);
       setPhotoUrls(prev => ({ ...prev, [type]: url }));
     }
@@ -118,7 +194,6 @@ export function NewAnalysisWizard() {
     return publicUrl;
   };
 
-  // Convert file to base64 for AI analysis
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -128,25 +203,18 @@ export function NewAnalysisWizard() {
     });
   };
 
-  // Call AI analysis when moving to step 3
   const handleAnalyzePhotos = async () => {
     setIsAnalyzing(true);
     try {
-      // Convert photos to base64
       const imageUrls: string[] = [];
       
-      if (photos.resting) {
-        imageUrls.push(await fileToBase64(photos.resting));
-      }
-      if (photos.glabellar) {
-        imageUrls.push(await fileToBase64(photos.glabellar));
-      }
-      if (photos.frontal) {
-        imageUrls.push(await fileToBase64(photos.frontal));
+      for (const photoType of Object.keys(photos) as PhotoType[]) {
+        if (photos[photoType]) {
+          imageUrls.push(await fileToBase64(photos[photoType]!));
+        }
       }
 
       if (imageUrls.length === 0) {
-        // No photos, use default analysis
         setAiAnalysis({
           injectionPoints: [
             { id: "proc_1", muscle: "procerus", x: 50, y: 25, depth: "deep", dosage: 8, notes: "Ponto central do procerus" },
@@ -163,9 +231,12 @@ export function NewAnalysisWizard() {
         return;
       }
 
-      // Call edge function
       const { data, error } = await supabase.functions.invoke('analyze-face', {
-        body: { imageUrls }
+        body: { 
+          imageUrls,
+          patientGender: patientData.gender,
+          muscleStrength: patientData.muscleStrength
+        }
       });
 
       if (error) {
@@ -189,7 +260,6 @@ export function NewAnalysisWizard() {
         variant: "destructive",
       });
       
-      // Fallback to default
       setAiAnalysis({
         injectionPoints: [
           { id: "proc_1", muscle: "procerus", x: 50, y: 25, depth: "deep", dosage: 8, notes: "Ponto central do procerus" },
@@ -213,25 +283,29 @@ export function NewAnalysisWizard() {
       p.id === pointId ? { ...p, dosage: newDosage } : p
     );
     
-    const procerusTotal = updatedPoints
+    recalculateTotals(updatedPoints);
+  };
+
+  const recalculateTotals = (points: InjectionPoint[]) => {
+    const procerusTotal = points
       .filter(p => p.muscle === "procerus")
       .reduce((sum, p) => sum + p.dosage, 0);
     
-    const corrugatorTotal = updatedPoints
+    const corrugatorTotal = points
       .filter(p => p.muscle.startsWith("corrugator"))
       .reduce((sum, p) => sum + p.dosage, 0);
 
-    const frontalisTotal = updatedPoints
+    const frontalisTotal = points
       .filter(p => p.muscle === "frontalis")
       .reduce((sum, p) => sum + p.dosage, 0);
 
-    const orbicularisTotal = updatedPoints
+    const orbicularisTotal = points
       .filter(p => p.muscle.startsWith("orbicularis_oculi"))
       .reduce((sum, p) => sum + p.dosage, 0);
     
-    setAiAnalysis({
-      ...aiAnalysis,
-      injectionPoints: updatedPoints,
+    setAiAnalysis(prev => prev ? {
+      ...prev,
+      injectionPoints: points,
       totalDosage: {
         procerus: procerusTotal,
         corrugator: corrugatorTotal,
@@ -239,10 +313,34 @@ export function NewAnalysisWizard() {
         orbicularis_oculi: orbicularisTotal,
         total: procerusTotal + corrugatorTotal + frontalisTotal + orbicularisTotal
       }
+    } : null);
+  };
+
+  // Handle template application
+  const handleApplyTemplates = (points: InjectionPoint[], totalUnits: number) => {
+    if (!aiAnalysis) {
+      setAiAnalysis({
+        injectionPoints: points,
+        totalDosage: {
+          procerus: 0,
+          corrugator: 0,
+          total: totalUnits
+        },
+        clinicalNotes: "Protocolo aplicado via template.",
+        confidence: 0.9
+      });
+    } else {
+      // Merge with existing points or replace
+      const newPoints = [...aiAnalysis.injectionPoints, ...points];
+      recalculateTotals(newPoints);
+    }
+    
+    toast({
+      title: "Template aplicado!",
+      description: `${points.length} pontos adicionados com total de ${totalUnits}U.`,
     });
   };
 
-  // Calcular dosagens por músculo para alertas de segurança
   const dosagesByMuscle = useMemo(() => {
     if (!aiAnalysis) return {};
     
@@ -252,7 +350,6 @@ export function NewAnalysisWizard() {
     }, {} as Record<string, number>);
   }, [aiAnalysis]);
 
-  // Exportar PDF
   const handleExportPdf = async () => {
     if (!aiAnalysis) return;
     
@@ -266,7 +363,7 @@ export function NewAnalysisWizard() {
           .from("profiles")
           .select("full_name, clinic_name")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
         
         if (profile) {
           doctorName = profile.full_name || "";
@@ -303,7 +400,6 @@ export function NewAnalysisWizard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      // Create patient first
       const { data: patient, error: patientError } = await supabase
         .from('patients')
         .insert({
@@ -317,14 +413,23 @@ export function NewAnalysisWizard() {
 
       if (patientError) throw patientError;
 
-      // Upload photos in parallel
-      const uploadedUrls = await Promise.all([
-        photos.resting ? uploadPhotoToStorage(photos.resting, user.id, patient.id, 'resting') : null,
-        photos.glabellar ? uploadPhotoToStorage(photos.glabellar, user.id, patient.id, 'glabellar') : null,
-        photos.frontal ? uploadPhotoToStorage(photos.frontal, user.id, patient.id, 'frontal') : null,
-      ]);
+      // Upload all photos in parallel
+      const photoUploadPromises = (Object.keys(photos) as PhotoType[]).map(async (photoType) => {
+        if (photos[photoType]) {
+          return {
+            type: photoType,
+            url: await uploadPhotoToStorage(photos[photoType]!, user.id, patient.id, photoType)
+          };
+        }
+        return { type: photoType, url: null };
+      });
+      
+      const uploadedPhotos = await Promise.all(photoUploadPromises);
+      const photoUrls: Record<string, string | null> = {};
+      uploadedPhotos.forEach(p => {
+        photoUrls[`${p.type}_photo_url`] = p.url;
+      });
 
-      // Create analysis with photo URLs and AI data
       const { error: analysisError } = await supabase
         .from('analyses')
         .insert({
@@ -332,12 +437,21 @@ export function NewAnalysisWizard() {
           patient_id: patient.id,
           procerus_dosage: aiAnalysis?.totalDosage.procerus || 0,
           corrugator_dosage: aiAnalysis?.totalDosage.corrugator || 0,
-          resting_photo_url: uploadedUrls[0],
-          glabellar_photo_url: uploadedUrls[1],
-          frontal_photo_url: uploadedUrls[2],
+          resting_photo_url: photoUrls.resting_photo_url,
+          glabellar_photo_url: photoUrls.glabellar_photo_url,
+          frontal_photo_url: photoUrls.frontal_photo_url,
+          smile_photo_url: photoUrls.smile_photo_url,
+          nasal_photo_url: photoUrls.nasal_photo_url,
+          perioral_photo_url: photoUrls.perioral_photo_url,
+          profile_left_photo_url: photoUrls.profile_left_photo_url,
+          profile_right_photo_url: photoUrls.profile_right_photo_url,
           ai_injection_points: aiAnalysis?.injectionPoints as any || null,
           ai_clinical_notes: aiAnalysis?.clinicalNotes || null,
           ai_confidence: aiAnalysis?.confidence || null,
+          patient_gender: patientData.gender,
+          muscle_strength_score: patientData.muscleStrength,
+          product_type: TOXIN_PRODUCTS.find(p => p.id === selectedProduct)?.genericName || 'OnabotulinumtoxinA',
+          conversion_factor: conversionFactor,
           status: 'completed',
         });
 
@@ -350,11 +464,13 @@ export function NewAnalysisWizard() {
 
       // Reset form
       setStep(1);
-      setPatientData({ name: "", age: "", observations: "" });
-      setPhotos({ resting: null, glabellar: null, frontal: null });
-      setPhotoUrls({ resting: null, glabellar: null, frontal: null });
+      setPatientData({ name: "", age: "", gender: "feminino", muscleStrength: "medium", observations: "" });
+      setPhotos({ resting: null, glabellar: null, frontal: null, smile: null, nasal: null, perioral: null, profile_left: null, profile_right: null });
+      setPhotoUrls({ resting: null, glabellar: null, frontal: null, smile: null, nasal: null, perioral: null, profile_left: null, profile_right: null });
       setAiAnalysis(null);
       setSelectedPoint(null);
+      setSelectedProduct("botox");
+      setConversionFactor(1.0);
       
     } catch (error: any) {
       toast({
@@ -369,6 +485,8 @@ export function NewAnalysisWizard() {
 
   const canProceedStep1 = patientData.name.trim().length > 0;
   const canProceedStep2 = photos.resting || photos.glabellar || photos.frontal;
+  
+  const photosToShow = showExpandedPhotos ? PHOTO_TYPES : PHOTO_TYPES.slice(0, 3);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -403,79 +521,151 @@ export function NewAnalysisWizard() {
         ))}
       </div>
 
-      {/* Step 1: Patient Data */}
+      {/* Step 1: Patient Data + Product Selection */}
       {step === 1 && (
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              <User className="w-5 h-5 text-primary" />
-              Dados do Paciente
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <User className="w-5 h-5 text-primary" />
+                Dados do Paciente
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome Completo *</Label>
+                  <Input
+                    id="name"
+                    value={patientData.name}
+                    onChange={(e) => setPatientData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Nome do paciente"
+                    className="bg-muted/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="age">Idade</Label>
+                  <Input
+                    id="age"
+                    type="number"
+                    value={patientData.age}
+                    onChange={(e) => setPatientData(prev => ({ ...prev, age: e.target.value }))}
+                    placeholder="Ex: 35"
+                    className="bg-muted/30"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Sexo</Label>
+                  <Select 
+                    value={patientData.gender} 
+                    onValueChange={(value: "feminino" | "masculino") => setPatientData(prev => ({ ...prev, gender: value }))}
+                  >
+                    <SelectTrigger className="bg-muted/30">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="feminino">Feminino</SelectItem>
+                      <SelectItem value="masculino">Masculino</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Homens geralmente requerem doses 30-50% maiores
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="muscleStrength" className="flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    Força Muscular
+                  </Label>
+                  <Select 
+                    value={patientData.muscleStrength} 
+                    onValueChange={(value: "low" | "medium" | "high") => setPatientData(prev => ({ ...prev, muscleStrength: value }))}
+                  >
+                    <SelectTrigger className="bg-muted/30">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Baixa</SelectItem>
+                      <SelectItem value="medium">Média</SelectItem>
+                      <SelectItem value="high">Alta</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Avalie a contração muscular durante expressões faciais
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="name">Nome Completo *</Label>
-                <Input
-                  id="name"
-                  value={patientData.name}
-                  onChange={(e) => setPatientData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Nome do paciente"
-                  className="bg-muted/30"
+                <Label htmlFor="observations">Observações</Label>
+                <Textarea
+                  id="observations"
+                  value={patientData.observations}
+                  onChange={(e) => setPatientData(prev => ({ ...prev, observations: e.target.value }))}
+                  placeholder="Notas clínicas, histórico relevante..."
+                  className="bg-muted/30 min-h-[100px]"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="age">Idade</Label>
-                <Input
-                  id="age"
-                  type="number"
-                  value={patientData.age}
-                  onChange={(e) => setPatientData(prev => ({ ...prev, age: e.target.value }))}
-                  placeholder="Ex: 35"
-                  className="bg-muted/30"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="observations">Observações</Label>
-              <Textarea
-                id="observations"
-                value={patientData.observations}
-                onChange={(e) => setPatientData(prev => ({ ...prev, observations: e.target.value }))}
-                placeholder="Notas clínicas, histórico relevante..."
-                className="bg-muted/30 min-h-[100px]"
+            </CardContent>
+          </Card>
+
+          {/* Product Selection */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3 text-base">
+                💉 Toxina Botulínica
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ProductSelector
+                selectedProduct={selectedProduct}
+                onProductChange={handleProductChange}
               />
-            </div>
-            <div className="flex justify-end pt-4">
-              <Button onClick={() => setStep(2)} disabled={!canProceedStep1}>
-                Próximo
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <div className="lg:col-span-3 flex justify-end pt-4">
+            <Button onClick={() => setStep(2)} disabled={!canProceedStep1}>
+              Próximo
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Step 2: Photo Upload */}
       {step === 2 && (
         <Card className="border-border/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              <Camera className="w-5 h-5 text-primary" />
-              Fotos do Protocolo
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-3">
+                <Camera className="w-5 h-5 text-primary" />
+                Fotos do Protocolo
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="expanded-photos"
+                  checked={showExpandedPhotos}
+                  onCheckedChange={setShowExpandedPhotos}
+                />
+                <Label htmlFor="expanded-photos" className="text-sm cursor-pointer">
+                  Protocolo Completo (8 fotos)
+                </Label>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              {[
-                { key: "resting" as PhotoType, label: "Face em Repouso", desc: "Expressão neutra" },
-                { key: "glabellar" as PhotoType, label: "Contração Glabelar", desc: "Expressão 'Bravo'" },
-                { key: "frontal" as PhotoType, label: "Contração Frontal", desc: "Expressão 'Surpresa'" },
-              ].map((photo) => (
+            <div className={`grid gap-4 mb-6 ${showExpandedPhotos ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}>
+              {photosToShow.map((photo) => (
                 <div key={photo.key} className="space-y-3">
-                  <Label>{photo.label}</Label>
+                  <Label className="flex items-center gap-2">
+                    {photo.label}
+                    {photo.required && <span className="text-xs text-primary">*</span>}
+                  </Label>
                   
-                  {/* Photo Preview */}
                   <div className="relative h-40 border-2 border-dashed border-border/50 rounded-lg overflow-hidden bg-muted/20">
                     {photoUrls[photo.key] ? (
                       <>
@@ -501,7 +691,6 @@ export function NewAnalysisWizard() {
                     )}
                   </div>
 
-                  {/* Action Buttons */}
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -564,13 +753,7 @@ export function NewAnalysisWizard() {
           onClose={() => setCameraOpen(null)}
           onCapture={handleCameraCapture(cameraOpen)}
           photoType={cameraOpen}
-          photoLabel={
-            cameraOpen === "resting" 
-              ? "Face em Repouso" 
-              : cameraOpen === "glabellar" 
-                ? "Contração Glabelar" 
-                : "Contração Frontal"
-          }
+          photoLabel={PHOTO_TYPES.find(p => p.key === cameraOpen)?.label || "Foto"}
         />
       )}
 
@@ -580,7 +763,7 @@ export function NewAnalysisWizard() {
           {/* AI Analysis Header */}
           <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5">
             <CardContent className="py-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
                     <Brain className="w-6 h-6 text-white" />
@@ -593,16 +776,20 @@ export function NewAnalysisWizard() {
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">{aiAnalysis.totalDosage.total}U</p>
-                  <p className="text-xs text-muted-foreground">Dosagem total recomendada</p>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">{aiAnalysis.totalDosage.total}U</p>
+                    <p className="text-xs text-muted-foreground">
+                      {TOXIN_PRODUCTS.find(p => p.id === selectedProduct)?.name || 'Botox'}
+                    </p>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-            {/* 3D Face Viewer - Larger */}
+            {/* 3D Face Viewer */}
             <Card className="xl:col-span-3 border-border/50 overflow-hidden">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -648,20 +835,15 @@ export function NewAnalysisWizard() {
               </CardContent>
             </Card>
 
-            {/* Dosage Controls & Details */}
+            {/* Right Sidebar - Templates & Dosage */}
             <div className="xl:col-span-2 space-y-4">
-              {/* Clinical Notes */}
-              <Card className="border-border/50">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Brain className="w-4 h-4 text-primary" />
-                    Observações Clínicas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{aiAnalysis.clinicalNotes}</p>
-                </CardContent>
-              </Card>
+              {/* Treatment Templates */}
+              <TreatmentTemplates
+                patientGender={patientData.gender}
+                muscleStrength={patientData.muscleStrength}
+                conversionFactor={conversionFactor}
+                onSelectTemplate={handleApplyTemplates}
+              />
 
               {/* Dosage Summary */}
               <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
@@ -695,6 +877,19 @@ export function NewAnalysisWizard() {
                     <p className="text-3xl font-bold text-foreground">{aiAnalysis.totalDosage.total}U</p>
                     <p className="text-sm text-muted-foreground">Total Geral</p>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Clinical Notes */}
+              <Card className="border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-primary" />
+                    Observações Clínicas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{aiAnalysis.clinicalNotes}</p>
                 </CardContent>
               </Card>
 
