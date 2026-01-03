@@ -13,13 +13,23 @@ export interface InjectionPoint {
   notes?: string;
 }
 
+export interface DangerZone {
+  id: string;
+  name: string;
+  description: string;
+  risk: string;
+  vertices: [number, number, number][];
+}
+
 interface Face3DViewerProps {
   injectionPoints: InjectionPoint[];
+  dangerZones?: DangerZone[];
   onPointClick?: (point: InjectionPoint) => void;
   onPointDosageChange?: (pointId: string, newDosage: number) => void;
   isLoading?: boolean;
   showLabels?: boolean;
   showMuscles?: boolean;
+  showDangerZones?: boolean;
 }
 
 // Muscle definitions with anatomical data
@@ -641,6 +651,81 @@ function AnatomicalFaceModel({ showMuscles = true }: { showMuscles?: boolean }) 
   );
 }
 
+// Danger Zone polygon overlay component
+function DangerZoneOverlay({ zone, visible }: { zone: DangerZone; visible: boolean }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const [hovered, setHovered] = useState(false);
+  
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    if (zone.vertices.length > 0) {
+      s.moveTo(zone.vertices[0][0], zone.vertices[0][1]);
+      for (let i = 1; i < zone.vertices.length; i++) {
+        s.lineTo(zone.vertices[i][0], zone.vertices[i][1]);
+      }
+      s.closePath();
+    }
+    return s;
+  }, [zone.vertices]);
+
+  useFrame((state) => {
+    if (meshRef.current && visible) {
+      // Pulsing effect for danger zones
+      const pulse = 0.2 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
+      (meshRef.current.material as THREE.MeshBasicMaterial).opacity = hovered ? 0.5 : pulse;
+    }
+  });
+
+  if (!visible) return null;
+
+  return (
+    <group position={[0, 0, 1.6]}>
+      <mesh
+        ref={meshRef}
+        onPointerOver={() => setHovered(true)}
+        onPointerOut={() => setHovered(false)}
+      >
+        <shapeGeometry args={[shape]} />
+        <meshBasicMaterial
+          color="#DC2626"
+          transparent
+          opacity={0.25}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      
+      {/* Danger zone border */}
+      <lineLoop>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            count={zone.vertices.length}
+            array={new Float32Array(zone.vertices.flat())}
+            itemSize={3}
+          />
+        </bufferGeometry>
+        <lineBasicMaterial color="#DC2626" linewidth={2} />
+      </lineLoop>
+
+      {/* Tooltip on hover */}
+      {hovered && (
+        <Html distanceFactor={8} style={{ pointerEvents: "none" }} position={[0, 0, 0.5]}>
+          <div className="bg-red-900/95 backdrop-blur-sm border border-red-500/50 rounded-lg px-4 py-3 shadow-2xl whitespace-nowrap min-w-[200px]">
+            <p className="font-bold text-red-300 text-sm flex items-center gap-2">
+              ⚠️ {zone.name}
+            </p>
+            <p className="text-white text-xs mt-1">{zone.description}</p>
+            <p className="text-red-400 text-xs mt-2 border-t border-red-700 pt-2">
+              Risco: {zone.risk}
+            </p>
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
 // Muscle label component
 function MuscleLabel({ 
   text, 
@@ -695,13 +780,91 @@ function LoadingIndicator() {
   );
 }
 
+// Default anatomical danger zones based on medical literature
+const DEFAULT_DANGER_ZONES: DangerZone[] = [
+  {
+    id: "orbital_margin_left",
+    name: "Margem Orbital Esquerda",
+    description: "Evitar injeções abaixo da borda óssea orbital",
+    risk: "Ptose palpebral (queda da pálpebra)",
+    vertices: [
+      [-0.9, 0.15, 0],
+      [-0.3, 0.15, 0],
+      [-0.3, 0.05, 0],
+      [-0.9, 0.05, 0],
+    ]
+  },
+  {
+    id: "orbital_margin_right",
+    name: "Margem Orbital Direita",
+    description: "Evitar injeções abaixo da borda óssea orbital",
+    risk: "Ptose palpebral (queda da pálpebra)",
+    vertices: [
+      [0.3, 0.15, 0],
+      [0.9, 0.15, 0],
+      [0.9, 0.05, 0],
+      [0.3, 0.05, 0],
+    ]
+  },
+  {
+    id: "infraorbital_left",
+    name: "Área Infraorbital Esquerda",
+    description: "Zona de risco para assimetria facial",
+    risk: "Assimetria facial e diplopia",
+    vertices: [
+      [-0.8, 0.0, 0],
+      [-0.4, 0.0, 0],
+      [-0.4, -0.25, 0],
+      [-0.8, -0.25, 0],
+    ]
+  },
+  {
+    id: "infraorbital_right",
+    name: "Área Infraorbital Direita",
+    description: "Zona de risco para assimetria facial",
+    risk: "Assimetria facial e diplopia",
+    vertices: [
+      [0.4, 0.0, 0],
+      [0.8, 0.0, 0],
+      [0.8, -0.25, 0],
+      [0.4, -0.25, 0],
+    ]
+  },
+  {
+    id: "labial_commissure_left",
+    name: "Comissura Labial Esquerda",
+    description: "Evitar aplicações próximas ao canto da boca",
+    risk: "Queda do sorriso / assimetria labial",
+    vertices: [
+      [-0.55, -0.45, 0],
+      [-0.35, -0.45, 0],
+      [-0.35, -0.65, 0],
+      [-0.55, -0.65, 0],
+    ]
+  },
+  {
+    id: "labial_commissure_right",
+    name: "Comissura Labial Direita",
+    description: "Evitar aplicações próximas ao canto da boca",
+    risk: "Queda do sorriso / assimetria labial",
+    vertices: [
+      [0.35, -0.45, 0],
+      [0.55, -0.45, 0],
+      [0.55, -0.65, 0],
+      [0.35, -0.65, 0],
+    ]
+  },
+];
+
 // Main component
 export function Face3DViewer({ 
   injectionPoints, 
+  dangerZones = DEFAULT_DANGER_ZONES,
   onPointClick,
   isLoading = false,
   showLabels = true,
-  showMuscles = true
+  showMuscles = true,
+  showDangerZones = true
 }: Face3DViewerProps) {
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
 
@@ -755,6 +918,15 @@ export function Face3DViewer({
             />
           ))}
 
+          {/* Danger zones */}
+          {dangerZones.map((zone) => (
+            <DangerZoneOverlay
+              key={zone.id}
+              zone={zone}
+              visible={showDangerZones}
+            />
+          ))}
+
           {/* Injection points */}
           {injectionPoints.map((point) => (
             <InjectionPointMesh
@@ -801,6 +973,12 @@ export function Face3DViewer({
             <div className="w-3 h-3 rounded-full bg-violet-500"></div>
             <span className="text-xs text-slate-600">Profundo</span>
           </div>
+          {showDangerZones && (
+            <div className="flex items-center gap-2 pt-1 border-t border-slate-200 mt-1">
+              <div className="w-3 h-3 bg-red-500/40 border border-red-500"></div>
+              <span className="text-xs text-red-600 font-medium">Zona de Perigo</span>
+            </div>
+          )}
         </div>
       </div>
 
