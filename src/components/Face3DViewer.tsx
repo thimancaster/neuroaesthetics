@@ -11,6 +11,10 @@ export interface InjectionPoint {
   depth: "superficial" | "deep";
   dosage: number;
   notes?: string;
+  confidence?: number; // 0.0-1.0 confidence score
+  zone?: string; // Zone name for grouping
+  relativeX?: number; // Original relative coordinate
+  relativeY?: number;
 }
 
 export interface DangerZone {
@@ -30,6 +34,51 @@ interface Face3DViewerProps {
   showLabels?: boolean;
   showMuscles?: boolean;
   showDangerZones?: boolean;
+}
+
+// Zone-specific 3D mapping configuration based on anatomical curvature
+const ZONE_3D_CONFIG: Record<string, { baseZ: number; curveFactor: number; yOffset: number }> = {
+  glabella: { baseZ: 1.35, curveFactor: 0.15, yOffset: 0.1 },
+  frontalis: { baseZ: 1.0, curveFactor: 0.25, yOffset: 0.3 },
+  periorbital: { baseZ: 1.25, curveFactor: 0.30, yOffset: 0 },
+  nasal: { baseZ: 1.55, curveFactor: 0.10, yOffset: -0.1 },
+  perioral: { baseZ: 1.40, curveFactor: 0.20, yOffset: -0.3 },
+  mentalis: { baseZ: 1.20, curveFactor: 0.30, yOffset: -0.5 },
+  masseter: { baseZ: 0.60, curveFactor: 0.40, yOffset: -0.2 }
+};
+
+// Determine zone from muscle name or coordinates
+function determineZone(muscle: string, y: number): string {
+  const muscleLower = muscle.toLowerCase();
+  
+  if (muscleLower.includes('prócero') || muscleLower.includes('procerus') || muscleLower.includes('corrugador') || muscleLower.includes('corrugator')) {
+    return 'glabella';
+  }
+  if (muscleLower.includes('frontal') || muscleLower.includes('frontalis')) {
+    return 'frontalis';
+  }
+  if (muscleLower.includes('orbicular') && (muscleLower.includes('olho') || muscleLower.includes('oculi') || muscleLower.includes('esquerdo') || muscleLower.includes('direito'))) {
+    return 'periorbital';
+  }
+  if (muscleLower.includes('nasal') || muscleLower.includes('nasalis')) {
+    return 'nasal';
+  }
+  if (muscleLower.includes('orbicular') && (muscleLower.includes('boca') || muscleLower.includes('oris'))) {
+    return 'perioral';
+  }
+  if (muscleLower.includes('ment') || muscleLower.includes('queixo')) {
+    return 'mentalis';
+  }
+  if (muscleLower.includes('masseter')) {
+    return 'masseter';
+  }
+  
+  // Fallback based on Y coordinate
+  if (y < 25) return 'frontalis';
+  if (y < 40) return 'glabella';
+  if (y < 55) return 'periorbital';
+  if (y < 70) return 'perioral';
+  return 'mentalis';
 }
 
 // Muscle definitions with anatomical data
@@ -115,14 +164,36 @@ function getMuscleColor(muscle: string): string {
   return MUSCLE_DATA[muscle]?.color || "#B85450";
 }
 
-// Convert 2D percentage coordinates to 3D face positions
-function percentTo3D(x: number, y: number): [number, number, number] {
+// Convert 2D percentage coordinates to 3D face positions with zone-aware curvature
+function percentTo3D(x: number, y: number, muscle?: string): [number, number, number] {
+  // Determine the zone based on muscle or y coordinate
+  const zone = muscle ? determineZone(muscle, y) : (y < 25 ? 'frontalis' : y < 40 ? 'glabella' : y < 55 ? 'periorbital' : 'perioral');
+  const config = ZONE_3D_CONFIG[zone] || { baseZ: 1.2, curveFactor: 0.25, yOffset: 0 };
+  
+  // Calculate 3D coordinates with anatomically-accurate curvature per zone
   const x3d = ((x - 50) / 50) * 1.4;
-  const y3d = ((50 - y) / 50) * 1.8 + 0.2;
-  // More realistic face curvature
-  const curveFactor = 1 - Math.pow(Math.abs(x3d) / 1.4, 2) * 0.4;
-  const z3d = Math.sqrt(Math.max(0.1, 2.0 - x3d * x3d * 0.5 - Math.pow((y3d - 0.3) / 2, 2) * 0.3)) * curveFactor + 0.4;
-  return [x3d, y3d, z3d];
+  const y3d = ((50 - y) / 50) * 1.8 + 0.2 + config.yOffset * 0.3;
+  
+  // Zone-specific Z depth with lateral fall-off
+  const lateralFalloff = Math.pow(Math.abs(x3d) / 1.4, 2);
+  const verticalFactor = Math.pow((y3d - 0.3) / 2, 2);
+  const z3d = config.baseZ - lateralFalloff * config.curveFactor - verticalFactor * 0.15;
+  
+  return [x3d, y3d, Math.max(0.4, z3d)];
+}
+
+// Get confidence-based color (green = high, yellow = medium, red = low)
+function getConfidenceColor(confidence?: number): string {
+  if (!confidence) return "#DC2626"; // Default red
+  if (confidence >= 0.8) return "#10B981"; // Green - high confidence
+  if (confidence >= 0.6) return "#F59E0B"; // Amber - medium confidence
+  return "#EF4444"; // Red - low confidence
+}
+
+// Get confidence ring size
+function getConfidenceRingSize(confidence?: number): number {
+  if (!confidence) return 0.10;
+  return 0.08 + confidence * 0.08; // 0.08 to 0.16 based on confidence
 }
 
 // Anatomical muscle mesh component
@@ -211,7 +282,7 @@ function MuscleWithFibers({
   );
 }
 
-// Injection point sphere component
+// Injection point sphere component with confidence visualization
 function InjectionPointMesh({ 
   point, 
   onClick,
@@ -223,10 +294,17 @@ function InjectionPointMesh({
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
+  const confidenceRingRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
-  const position = percentTo3D(point.x, point.y);
-  const color = getMuscleColor(point.muscle);
+  
+  // Use zone-aware 3D mapping
+  const position = percentTo3D(point.x, point.y, point.muscle);
   const muscleLabel = MUSCLE_DATA[point.muscle]?.label || point.muscle;
+  
+  // Confidence-based visualization
+  const confidenceColor = getConfidenceColor(point.confidence);
+  const confidenceRingSize = getConfidenceRingSize(point.confidence);
+  const confidencePercent = point.confidence ? Math.round(point.confidence * 100) : null;
 
   useFrame((state) => {
     if (meshRef.current) {
@@ -236,11 +314,29 @@ function InjectionPointMesh({
     if (ringRef.current) {
       ringRef.current.rotation.z = state.clock.elapsedTime * 0.5;
     }
+    if (confidenceRingRef.current && point.confidence) {
+      // Subtle pulse based on confidence
+      const pulse = 0.9 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
+      confidenceRingRef.current.scale.setScalar(pulse);
+    }
   });
 
   return (
     <group position={position}>
-      {/* Outer glow ring */}
+      {/* Confidence indicator ring (outer) */}
+      {point.confidence && (
+        <mesh ref={confidenceRingRef}>
+          <ringGeometry args={[confidenceRingSize, confidenceRingSize + 0.03, 32]} />
+          <meshBasicMaterial 
+            color={confidenceColor}
+            transparent 
+            opacity={0.7}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
+      
+      {/* Selection/hover ring */}
       <mesh ref={ringRef}>
         <ringGeometry args={[0.12, 0.16, 32]} />
         <meshBasicMaterial 
@@ -251,7 +347,7 @@ function InjectionPointMesh({
         />
       </mesh>
 
-      {/* Inner point */}
+      {/* Inner point - color based on depth */}
       <mesh
         ref={meshRef}
         onClick={(e) => {
@@ -287,11 +383,22 @@ function InjectionPointMesh({
         />
       </mesh>
 
-      {/* Tooltip on hover */}
+      {/* Enhanced tooltip on hover */}
       {hovered && (
         <Html distanceFactor={8} style={{ pointerEvents: "none" }}>
-          <div className="bg-slate-900/95 backdrop-blur-sm border border-amber-500/30 rounded-lg px-4 py-3 shadow-2xl whitespace-nowrap min-w-[180px]">
-            <p className="font-bold text-amber-400 text-sm">{muscleLabel}</p>
+          <div className="bg-slate-900/95 backdrop-blur-sm border border-amber-500/30 rounded-lg px-4 py-3 shadow-2xl whitespace-nowrap min-w-[200px]">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-bold text-amber-400 text-sm">{muscleLabel}</p>
+              {confidencePercent !== null && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  confidencePercent >= 80 ? 'bg-emerald-500/20 text-emerald-300' :
+                  confidencePercent >= 60 ? 'bg-amber-500/20 text-amber-300' :
+                  'bg-red-500/20 text-red-300'
+                }`}>
+                  {confidencePercent}% conf.
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-white font-semibold text-lg">{point.dosage}U</span>
               <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -300,7 +407,12 @@ function InjectionPointMesh({
                 {point.depth === "deep" ? "Profundo" : "Superficial"}
               </span>
             </div>
-            {point.notes && <p className="text-xs text-slate-400 mt-2 border-t border-slate-700 pt-2">{point.notes}</p>}
+            {point.zone && (
+              <p className="text-xs text-slate-400 mt-1">Zona: {point.zone}</p>
+            )}
+            {point.notes && (
+              <p className="text-xs text-slate-400 mt-2 border-t border-slate-700 pt-2">{point.notes}</p>
+            )}
           </div>
         </Html>
       )}
