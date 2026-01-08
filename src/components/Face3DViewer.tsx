@@ -1,12 +1,12 @@
 import { useRef, useState, Suspense, useMemo, useEffect, useCallback } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Html, Text, Billboard, useGLTF, Center } from "@react-three/drei";
 import * as THREE from "three";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, CheckCircle2, Columns, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Columns, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Move, Hand, GripVertical } from "lucide-react";
 
 // ============================================================
 // TYPE DEFINITIONS
@@ -55,47 +55,70 @@ interface Face3DViewerProps {
   dangerZones?: DangerZone[];
   onPointClick?: (point: InjectionPoint) => void;
   onPointDosageChange?: (pointId: string, newDosage: number) => void;
+  onPointPositionChange?: (pointId: string, newX: number, newY: number) => void;
   onValidationResult?: (result: OverallValidation) => void;
   isLoading?: boolean;
   showLabels?: boolean;
   showMuscles?: boolean;
   showDangerZones?: boolean;
   patientPhoto?: string;
+  enableEditing?: boolean;
 }
 
 // ============================================================
-// GLB MODEL CALIBRATION - PRECISION TUNING
-// These values are calibrated for the Meshy AI anatomical model
+// GLB MODEL CALIBRATION - ULTRA-PRECISION TUNING
+// Calibrated specifically for the Meshy AI anatomical musculature model
+// Version: 2.0 - Enhanced anatomical alignment
 // ============================================================
 
 const MODEL_CONFIG = {
-  // Scale to fit face in view (calibrated for Meshy AI model)
-  scale: 0.022,
+  // Scale calibrated for the Meshy AI muscular anatomy model
+  // Adjusted to match injection point coordinate space (0-100%)
+  scale: 0.018,
   
-  // Position offset to center the face
-  positionOffset: { x: 0, y: -0.35, z: 0 },
+  // Position offset to perfectly center the face model
+  // Y: shifted up to align forehead with y=10-20% coordinates
+  // Z: pushed back to position face surface at proper depth
+  positionOffset: { x: 0, y: -0.55, z: -0.3 },
   
-  // Rotation offset (if model is not facing forward)
-  rotationOffset: { x: 0, y: 0, z: 0 },
+  // Rotation offset for frontal facing (radians)
+  // X: slight tilt to align with front view photo perspective
+  rotationOffset: { x: 0.05, y: 0, z: 0 },
   
-  // Face bounding box in 3D space (after transformations)
+  // Face bounding box in 3D world space (post-transformation)
+  // Used for coordinate mapping validation
   faceBounds: {
-    minX: -1.3,
-    maxX: 1.3,
-    minY: -1.6,
-    maxY: 1.9,
-    minZ: 0.4,
-    maxZ: 2.1
+    minX: -1.4,
+    maxX: 1.4,
+    minY: -1.8,
+    maxY: 2.0,
+    minZ: 0.3,
+    maxZ: 2.2
   },
   
-  // Anatomical landmarks for validation (normalized 0-100 coordinates)
+  // Key anatomical landmarks for precision validation
+  // Coordinates in normalized 0-100 percent space
   landmarks: {
-    glabella: { x: 50, y: 35, z: 1.45 },
-    nasion: { x: 50, y: 40, z: 1.50 },
-    pronasale: { x: 50, y: 55, z: 1.65 },
-    leftPupil: { x: 35, y: 38, z: 1.30 },
-    rightPupil: { x: 65, y: 38, z: 1.30 },
-    menton: { x: 50, y: 90, z: 1.20 }
+    glabella: { x: 50, y: 32, z: 1.42 },      // Exact midpoint between eyebrows
+    nasion: { x: 50, y: 38, z: 1.48 },        // Root of nose
+    pronasale: { x: 50, y: 52, z: 1.62 },     // Tip of nose
+    leftPupil: { x: 32, y: 36, z: 1.28 },     // Left eye center
+    rightPupil: { x: 68, y: 36, z: 1.28 },    // Right eye center
+    leftLateralCanthus: { x: 20, y: 38, z: 1.20 },  // Outer left eye corner
+    rightLateralCanthus: { x: 80, y: 38, z: 1.20 }, // Outer right eye corner
+    stomion: { x: 50, y: 70, z: 1.48 },       // Center of lips
+    menton: { x: 50, y: 88, z: 1.22 },        // Chin point
+    leftMasseter: { x: 18, y: 60, z: 0.72 },  // Left jaw muscle
+    rightMasseter: { x: 82, y: 60, z: 0.72 }  // Right jaw muscle
+  },
+  
+  // 3D space mapping coefficients for 2D->3D conversion
+  mapping: {
+    xScale: 1.40,       // Horizontal stretch factor
+    yScale: 1.85,       // Vertical stretch factor
+    baseDepth: 1.35,    // Default Z depth for central face
+    lateralCurve: 0.28, // How much face curves back at sides
+    verticalCurve: 0.18 // How much face curves at top/bottom
   }
 };
 
@@ -324,48 +347,70 @@ function determineZone(muscle: string, y: number, x: number): string {
 }
 
 // Ultra-precise 2D to 3D coordinate transformation with zone awareness
+// Uses MODEL_CONFIG mapping coefficients for calibrated conversion
 function percentTo3D(x: number, y: number, muscle?: string): [number, number, number] {
   const zone = muscle ? determineZone(muscle, y, x) : determineZone('', y, x);
   const config = ZONE_3D_CONFIG[zone] || ZONE_3D_CONFIG.glabella;
+  const { mapping } = MODEL_CONFIG;
   
-  // Normalize coordinates to [-1, 1] range
+  // Normalize coordinates from 0-100 to -1 to 1 range
   const normalizedX = (x - 50) / 50;
   const normalizedY = (50 - y) / 50;
   
-  // Apply zone-specific scaling with precision adjustment
-  const x3d = normalizedX * 1.35 * config.xScale;
-  const y3d = normalizedY * 1.75 * config.yScale + config.yOffset;
+  // Apply zone-specific scaling with precision calibration
+  const x3d = normalizedX * mapping.xScale * config.xScale;
+  const y3d = normalizedY * mapping.yScale * config.yScale + config.yOffset;
   
   // Calculate Z depth based on curve type with anatomical accuracy
   let z3d: number;
   const lateralDistance = Math.abs(normalizedX);
-  const verticalDeviation = Math.abs(normalizedY - config.yOffset / 1.75);
+  const verticalDeviation = Math.abs(normalizedY - config.yOffset / mapping.yScale);
   
   switch (config.zCurveType) {
     case 'spherical':
       // Spherical falloff for rounded areas (forehead, eye sockets, chin)
-      z3d = config.baseZ - Math.pow(lateralDistance, 2) * config.curveFactor;
-      z3d -= verticalDeviation * config.curveFactor * 0.35;
+      z3d = config.baseZ - Math.pow(lateralDistance, 2) * config.curveFactor * mapping.lateralCurve / 0.28;
+      z3d -= verticalDeviation * config.curveFactor * mapping.verticalCurve;
       break;
     case 'cylindrical':
       // Cylindrical for elongated structures (nose, lips, glabella)
-      z3d = config.baseZ - Math.pow(lateralDistance, 1.6) * config.curveFactor * 0.75;
+      z3d = config.baseZ - Math.pow(lateralDistance, 1.6) * config.curveFactor * 0.72;
       break;
     case 'flat':
       // Near-flat for lateral areas (masseter, jaw)
-      z3d = config.baseZ - lateralDistance * config.curveFactor * 0.25;
+      z3d = config.baseZ - lateralDistance * config.curveFactor * 0.22;
       break;
     default:
       z3d = config.baseZ;
   }
   
-  // Apply depth adjustment for zone precision
+  // Apply zone-specific depth adjustment for anatomical precision
   z3d += config.depthAdjustment;
   
   // Ensure minimum depth to stay on face surface
-  z3d = Math.max(0.42, z3d);
+  z3d = Math.max(0.35, z3d);
   
   return [x3d, y3d, z3d];
+}
+
+// Inverse transformation: 3D world coordinates back to 2D percent (for drag editing)
+function position3DToPercent(x3d: number, y3d: number, z3d: number, zone?: string): { x: number; y: number } {
+  const { mapping } = MODEL_CONFIG;
+  const config = zone ? ZONE_3D_CONFIG[zone] || ZONE_3D_CONFIG.glabella : ZONE_3D_CONFIG.glabella;
+  
+  // Reverse the coordinate transformation
+  const normalizedX = x3d / (mapping.xScale * config.xScale);
+  const normalizedY = (y3d - config.yOffset) / (mapping.yScale * config.yScale);
+  
+  // Convert back to 0-100 percent space
+  const x = normalizedX * 50 + 50;
+  const y = 50 - normalizedY * 50;
+  
+  // Clamp to valid range
+  return {
+    x: Math.max(0, Math.min(100, x)),
+    y: Math.max(0, Math.min(100, y))
+  };
 }
 
 // ============================================================
@@ -599,30 +644,51 @@ function AnatomicalGLBModel({ showMuscles = true }: { showMuscles?: boolean }) {
 
 useGLTF.preload('/models/anatomical-face.glb');
 
-function InjectionPointMesh({ 
-  point, 
-  onClick,
-  isSelected,
-  validationResult
-}: { 
-  point: InjectionPoint; 
+// ============================================================
+// DRAGGABLE INJECTION POINT COMPONENT (Edit Mode)
+// ============================================================
+
+interface DraggableInjectionPointProps {
+  point: InjectionPoint;
   onClick?: () => void;
+  onDragEnd?: (pointId: string, newX: number, newY: number) => void;
   isSelected?: boolean;
   validationResult?: ValidationResult;
-}) {
+  editMode: boolean;
+  orbitControlsRef: React.RefObject<any>;
+}
+
+function DraggableInjectionPoint({
+  point,
+  onClick,
+  onDragEnd,
+  isSelected,
+  validationResult,
+  editMode,
+  orbitControlsRef
+}: DraggableInjectionPointProps) {
   const meshRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const confidenceRingRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const { camera, gl, raycaster, scene } = useThree();
   
-  const position = percentTo3D(point.x, point.y, point.muscle);
+  const initialPosition = useMemo(() => percentTo3D(point.x, point.y, point.muscle), [point.x, point.y, point.muscle]);
+  const [position, setPosition] = useState<[number, number, number]>(initialPosition);
+  
+  // Update position when point changes externally
+  useEffect(() => {
+    setPosition(percentTo3D(point.x, point.y, point.muscle));
+  }, [point.x, point.y, point.muscle]);
+  
   const confidenceColor = getConfidenceColor(point.confidence);
   const confidenceRingSize = getConfidenceRingSize(point.confidence);
   const confidencePercent = point.confidence ? Math.round(point.confidence * 100) : null;
   
-  // Validation-based coloring
   const isInvalid = validationResult && !validationResult.isValid;
-  const pointColor = isInvalid ? "#EF4444" : "#DC2626";
+  const pointColor = isDragging ? "#FFD700" : (isInvalid ? "#EF4444" : "#DC2626");
   
   const muscleLabel = useMemo(() => {
     const muscleLower = point.muscle.toLowerCase();
@@ -644,10 +710,73 @@ function InjectionPointMesh({
     return point.muscle;
   }, [point.muscle, point.x]);
 
+  // Drag handlers
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (!editMode) return;
+    e.stopPropagation();
+    setIsDragging(true);
+    
+    // Disable orbit controls during drag
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.enabled = false;
+    }
+    
+    // Capture pointer
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    document.body.style.cursor = "grabbing";
+  }, [editMode, orbitControlsRef]);
+
+  const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging || !editMode) return;
+    e.stopPropagation();
+    
+    // Create a plane at the current Z depth for raycasting
+    const currentZ = position[2];
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -currentZ);
+    const intersection = new THREE.Vector3();
+    
+    // Get mouse position in normalized device coordinates
+    const rect = gl.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    
+    // Cast ray from camera
+    raycaster.setFromCamera(mouse, camera);
+    raycaster.ray.intersectPlane(plane, intersection);
+    
+    if (intersection) {
+      // Clamp to valid face bounds
+      const clampedX = Math.max(-1.4, Math.min(1.4, intersection.x));
+      const clampedY = Math.max(-1.8, Math.min(2.0, intersection.y));
+      
+      setPosition([clampedX, clampedY, currentZ]);
+    }
+  }, [isDragging, editMode, position, camera, gl, raycaster]);
+
+  const handlePointerUp = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging) return;
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    // Re-enable orbit controls
+    if (orbitControlsRef.current) {
+      orbitControlsRef.current.enabled = true;
+    }
+    
+    document.body.style.cursor = editMode ? "grab" : "pointer";
+    
+    // Convert 3D position back to 2D percent and notify parent
+    const zone = determineZone(point.muscle, point.y, point.x);
+    const newCoords = position3DToPercent(position[0], position[1], position[2], zone);
+    onDragEnd?.(point.id, newCoords.x, newCoords.y);
+  }, [isDragging, editMode, position, point.id, point.muscle, point.x, point.y, onDragEnd, orbitControlsRef]);
+
   useFrame((state) => {
     if (meshRef.current) {
-      const baseScale = hovered || isSelected ? 1.5 : 1;
-      const pulse = 1 + Math.sin(state.clock.elapsedTime * 3) * 0.12;
+      const baseScale = hovered || isSelected || isDragging ? 1.5 : 1;
+      const pulse = isDragging ? 1.2 : (1 + Math.sin(state.clock.elapsedTime * 3) * 0.12);
       meshRef.current.scale.setScalar(baseScale * pulse);
     }
     if (ringRef.current) {
@@ -660,9 +789,27 @@ function InjectionPointMesh({
   });
 
   return (
-    <group position={position}>
+    <group 
+      ref={groupRef}
+      position={position}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      {/* Drag handle indicator (edit mode) */}
+      {editMode && (
+        <mesh position={[0, 0.12, 0]}>
+          <sphereGeometry args={[0.03, 16, 16]} />
+          <meshBasicMaterial 
+            color={isDragging ? "#FFD700" : "#60A5FA"}
+            transparent
+            opacity={hovered || isDragging ? 1 : 0.6}
+          />
+        </mesh>
+      )}
+      
       {/* Validation warning ring */}
-      {isInvalid && (
+      {isInvalid && !isDragging && (
         <mesh rotation={[0, 0, 0]}>
           <ringGeometry args={[0.18, 0.22, 32]} />
           <meshBasicMaterial 
@@ -675,7 +822,7 @@ function InjectionPointMesh({
       )}
       
       {/* Confidence indicator ring */}
-      {point.confidence && !isInvalid && (
+      {point.confidence && !isInvalid && !isDragging && (
         <mesh ref={confidenceRingRef} rotation={[0, 0, 0]}>
           <ringGeometry args={[confidenceRingSize, confidenceRingSize + 0.025, 32]} />
           <meshBasicMaterial 
@@ -687,13 +834,13 @@ function InjectionPointMesh({
         </mesh>
       )}
       
-      {/* Selection ring */}
+      {/* Selection/Drag ring */}
       <mesh ref={ringRef}>
         <ringGeometry args={[0.10, 0.14, 32]} />
         <meshBasicMaterial 
-          color={isSelected ? "#FFD700" : "#FFFFFF"} 
+          color={isDragging ? "#FFD700" : (isSelected ? "#FFD700" : "#FFFFFF")} 
           transparent 
-          opacity={hovered || isSelected ? 0.9 : 0.55}
+          opacity={hovered || isSelected || isDragging ? 0.9 : 0.55}
           side={THREE.DoubleSide}
         />
       </mesh>
@@ -702,24 +849,28 @@ function InjectionPointMesh({
       <mesh
         ref={meshRef}
         onClick={(e) => {
-          e.stopPropagation();
-          onClick?.();
+          if (!isDragging) {
+            e.stopPropagation();
+            onClick?.();
+          }
         }}
         onPointerOver={(e) => {
           e.stopPropagation();
           setHovered(true);
-          document.body.style.cursor = "pointer";
+          document.body.style.cursor = editMode ? "grab" : "pointer";
         }}
         onPointerOut={() => {
           setHovered(false);
-          document.body.style.cursor = "auto";
+          if (!isDragging) {
+            document.body.style.cursor = "auto";
+          }
         }}
       >
         <sphereGeometry args={[0.055, 24, 24]} />
         <meshStandardMaterial 
           color={pointColor}
           emissive={pointColor}
-          emissiveIntensity={hovered || isSelected ? 1.2 : 0.6}
+          emissiveIntensity={hovered || isSelected || isDragging ? 1.2 : 0.6}
           metalness={0.4}
           roughness={0.25}
         />
@@ -735,7 +886,7 @@ function InjectionPointMesh({
       </mesh>
 
       {/* Enhanced tooltip */}
-      {hovered && (
+      {(hovered && !isDragging) && (
         <Html distanceFactor={8} style={{ pointerEvents: "none" }}>
           <div className="bg-slate-900/95 backdrop-blur-md border border-amber-500/40 rounded-xl px-4 py-3 shadow-2xl whitespace-nowrap min-w-[220px]">
             <div className="flex items-center justify-between gap-3">
@@ -768,12 +919,30 @@ function InjectionPointMesh({
                   {validationResult.isValid ? '✓' : '⚠'} {validationResult.message}
                 </p>
               )}
+              {editMode && (
+                <p className="text-blue-400 mt-1">🖱️ Arraste para reposicionar</p>
+              )}
             </div>
             {point.notes && (
               <p className="text-xs text-slate-300 mt-2 pt-2 border-t border-slate-700/50 italic">
                 {point.notes}
               </p>
             )}
+          </div>
+        </Html>
+      )}
+      
+      {/* Drag coordinate display */}
+      {isDragging && (
+        <Html distanceFactor={8} style={{ pointerEvents: "none" }}>
+          <div className="bg-yellow-500/90 backdrop-blur-md rounded-lg px-3 py-2 shadow-2xl whitespace-nowrap">
+            <p className="font-bold text-black text-sm">
+              📍 Arrastando...
+            </p>
+            <p className="text-xs text-black/70">
+              X: {position3DToPercent(position[0], position[1], position[2]).x.toFixed(1)}% 
+              Y: {position3DToPercent(position[0], position[1], position[2]).y.toFixed(1)}%
+            </p>
           </div>
         </Html>
       )}
@@ -973,21 +1142,29 @@ export function Face3DViewer({
   injectionPoints, 
   dangerZones = DEFAULT_DANGER_ZONES,
   onPointClick,
+  onPointPositionChange,
   onValidationResult,
   isLoading = false,
   showLabels = true,
   showMuscles = true,
   showDangerZones = true,
-  patientPhoto
+  patientPhoto,
+  enableEditing = false
 }: Face3DViewerProps) {
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [showValidationPanel, setShowValidationPanel] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const orbitControlsRef = useRef<any>(null);
 
   const handlePointClick = (point: InjectionPoint) => {
     setSelectedPointId(point.id);
     onPointClick?.(point);
   };
+
+  const handlePointDragEnd = useCallback((pointId: string, newX: number, newY: number) => {
+    onPointPositionChange?.(pointId, newX, newY);
+  }, [onPointPositionChange]);
 
   // Perform full anatomical validation
   const validationResults = useMemo(() => {
@@ -1015,6 +1192,23 @@ export function Face3DViewer({
       {/* Controls Bar */}
       <div className="flex items-center justify-between flex-wrap gap-3 px-2">
         <div className="flex items-center gap-4">
+          {/* Edit Mode Toggle */}
+          {enableEditing && (
+            <div className="flex items-center gap-2">
+              <Switch
+                id="edit-mode"
+                checked={editMode}
+                onCheckedChange={setEditMode}
+              />
+              <Label htmlFor="edit-mode" className="text-sm flex items-center gap-1">
+                <Move className="w-4 h-4" />
+                <span className={editMode ? 'text-amber-600 font-medium' : ''}>
+                  Editar Pontos
+                </span>
+              </Label>
+            </div>
+          )}
+          
           {patientPhoto && (
             <div className="flex items-center gap-2">
               <Switch
@@ -1042,6 +1236,13 @@ export function Face3DViewer({
         </div>
         
         <div className="flex items-center gap-2">
+          {editMode && (
+            <Badge variant="outline" className="text-xs bg-amber-50 border-amber-300 text-amber-700">
+              <GripVertical className="w-3 h-3 mr-1" />
+              Modo Edição Ativo
+            </Badge>
+          )}
+          
           {overallConfidence !== null && (
             <Badge 
               variant={overallConfidence >= 85 ? "default" : overallConfidence >= 70 ? "secondary" : "destructive"}
@@ -1064,8 +1265,20 @@ export function Face3DViewer({
         </div>
       </div>
 
+      {/* Edit Mode Instructions */}
+      {editMode && (
+        <div className="px-2">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
+            <Hand className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <p className="text-xs text-amber-700">
+              <strong>Modo de Edição:</strong> Arraste os pontos azuis para reposicionar. A validação anatômica será atualizada automaticamente.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Validation Alerts */}
-      {showValidationPanel && (
+      {showValidationPanel && !editMode && (
         <div className="px-2 space-y-2">
           {validationResults.errors.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-start gap-2">
@@ -1176,16 +1389,19 @@ export function Face3DViewer({
                 />
               ))}
 
-              {/* Injection points with validation */}
+              {/* Injection points with validation and editing */}
               {injectionPoints.map((point) => {
                 const validation = validationResults.pointValidations.find(v => v.pointId === point.id);
                 return (
-                  <InjectionPointMesh
+                  <DraggableInjectionPoint
                     key={point.id}
                     point={point}
                     onClick={() => handlePointClick(point)}
+                    onDragEnd={handlePointDragEnd}
                     isSelected={selectedPointId === point.id}
                     validationResult={validation}
+                    editMode={editMode}
+                    orbitControlsRef={orbitControlsRef}
                   />
                 );
               })}
@@ -1195,6 +1411,7 @@ export function Face3DViewer({
 
               {/* Controls */}
               <OrbitControls
+                ref={orbitControlsRef}
                 enablePan={true}
                 panSpeed={0.4}
                 minDistance={2.5}
@@ -1227,6 +1444,12 @@ export function Face3DViewer({
                   <span className="w-3 h-3 rounded-full border-2 border-emerald-500 bg-transparent"></span>
                   <span className="text-slate-600">Superficial (subdérmico)</span>
                 </div>
+                {editMode && (
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                    <span className="w-3 h-3 rounded-full bg-blue-400"></span>
+                    <span className="text-slate-600">Handle de Arrastar</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
                   <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
                   <span className="text-slate-600">Alta Confiança (≥85%)</span>
@@ -1264,12 +1487,15 @@ export function Face3DViewer({
 
           {/* Instructions */}
           <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow text-xs text-slate-500">
-            🖱️ Arraste para rotacionar • Scroll para zoom • Clique nos pontos para detalhes
+            {editMode 
+              ? '✋ Arraste pontos para reposicionar • Scroll para zoom'
+              : '🖱️ Arraste para rotacionar • Scroll para zoom • Clique nos pontos para detalhes'
+            }
           </div>
 
           {/* Model quality indicator */}
           <div className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-sm rounded-lg px-3 py-2 text-xs text-slate-300">
-            <span className="text-emerald-400">●</span> GLB Anatômico Calibrado
+            <span className="text-emerald-400">●</span> GLB Anatômico Calibrado v2.0
           </div>
         </div>
       </div>
