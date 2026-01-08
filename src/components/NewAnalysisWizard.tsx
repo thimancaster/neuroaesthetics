@@ -287,6 +287,22 @@ export function NewAnalysisWizard() {
     recalculateTotals(updatedPoints);
   };
 
+  // Handle point position change from 3D drag editing
+  const handlePointPositionChange = (pointId: string, newX: number, newY: number) => {
+    if (!aiAnalysis) return;
+    
+    const updatedPoints = aiAnalysis.injectionPoints.map(p => 
+      p.id === pointId ? { ...p, x: newX, y: newY } : p
+    );
+    
+    recalculateTotals(updatedPoints);
+    
+    toast({
+      title: "Ponto reposicionado",
+      description: `Novas coordenadas: X=${newX.toFixed(1)}%, Y=${newY.toFixed(1)}%`,
+    });
+  };
+
   const recalculateTotals = (points: InjectionPoint[]) => {
     const procerusTotal = points
       .filter(p => p.muscle === "procerus")
@@ -841,9 +857,12 @@ export function NewAnalysisWizard() {
                   <Face3DViewer
                     injectionPoints={aiAnalysis.injectionPoints}
                     onPointClick={setSelectedPoint}
+                    onPointPositionChange={handlePointPositionChange}
                     showMuscles={showMuscles}
                     showLabels={showLabels}
                     showDangerZones={showDangerZones}
+                    patientPhoto={photoUrls.resting || photoUrls.glabellar || undefined}
+                    enableEditing={true}
                   />
                 </div>
               </CardContent>
