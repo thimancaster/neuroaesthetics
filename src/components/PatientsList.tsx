@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,9 +22,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Edit2, Trash2, User, Calendar, FileText, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Search, Edit2, Trash2, User, Calendar, FileText, Loader2, PlusCircle, Activity, MoreVertical, History } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PatientQuickStats } from "./PatientQuickStats";
 
 interface Patient {
   id: string;
@@ -39,6 +48,7 @@ interface PatientsListProps {
 }
 
 export function PatientsList({ patients, onRefresh }: PatientsListProps) {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [deletingPatient, setDeletingPatient] = useState<Patient | null>(null);
@@ -119,6 +129,14 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
     }
   };
 
+  const handleNewConsultation = (patient: Patient) => {
+    navigate(`/dashboard/new-analysis/${patient.id}`);
+  };
+
+  const handleViewEvolution = (patient: Patient) => {
+    navigate(`/dashboard/evolution?patientId=${patient.id}`);
+  };
+
   return (
     <div className="space-y-4">
       {/* Search Bar */}
@@ -172,24 +190,43 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
                         {patient.observations}
                       </p>
                     )}
+                    <PatientQuickStats patientId={patient.id} />
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => openEditDialog(patient)}
+                      variant="default"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => handleNewConsultation(patient)}
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <PlusCircle className="w-4 h-4" />
+                      <span className="hidden sm:inline">Nova Consulta</span>
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => setDeletingPatient(patient)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon" className="h-8 w-8">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleViewEvolution(patient)}>
+                          <Activity className="w-4 h-4 mr-2" />
+                          Ver Evolução
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEditDialog(patient)}>
+                          <Edit2 className="w-4 h-4 mr-2" />
+                          Editar Dados
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => setDeletingPatient(patient)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Excluir Paciente
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardContent>

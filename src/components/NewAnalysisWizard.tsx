@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, ArrowLeft, ArrowRight, Check, User, Camera, Crosshair, Loader2, FolderOpen, X, Sparkles, Brain, Eye, Tag, FileDown, Activity } from "lucide-react";
+import { Upload, ArrowLeft, ArrowRight, Check, User, Camera, Crosshair, Loader2, FolderOpen, X, Sparkles, Brain, Eye, Tag, FileDown, Activity, History } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CameraCapture, PhotoType } from "./CameraCapture";
@@ -14,6 +15,7 @@ import { Face3DViewer, InjectionPoint } from "./Face3DViewer";
 import { DosageSafetyAlert } from "./DosageSafetyAlert";
 import { ProductSelector, TOXIN_PRODUCTS } from "./ProductSelector";
 import { TreatmentTemplates } from "./TreatmentTemplates";
+import { PatientHistorySummary } from "./PatientHistorySummary";
 import { exportAnalysisPdf } from "@/lib/exportPdf";
 
 interface PatientData {
@@ -60,12 +62,29 @@ const PHOTO_TYPES: { key: PhotoType; label: string; desc: string; required?: boo
   { key: "profile_right", label: "Perfil Direito", desc: "Lado direito" },
 ];
 
-export function NewAnalysisWizard() {
+interface ExistingPatient {
+  id: string;
+  name: string;
+  age: number | null;
+  observations: string | null;
+}
+
+interface NewAnalysisWizardProps {
+  existingPatientId?: string;
+}
+
+export function NewAnalysisWizard({ existingPatientId }: NewAnalysisWizardProps) {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [cameraOpen, setCameraOpen] = useState<PhotoType | null>(null);
   const { toast } = useToast();
+  
+  // Existing patient mode (return consultation)
+  const [existingPatient, setExistingPatient] = useState<ExistingPatient | null>(null);
+  const [isLoadingPatient, setIsLoadingPatient] = useState(false);
+  const isReturnMode = !!existingPatientId;
   
   // Product/toxin selection state
   const [selectedProduct, setSelectedProduct] = useState("botox");
@@ -108,6 +127,46 @@ export function NewAnalysisWizard() {
     profile_left: null,
     profile_right: null,
   });
+
+  // Load existing patient data when in return mode
+  useEffect(() => {
+    if (existingPatientId) {
+      loadExistingPatient(existingPatientId);
+    }
+  }, [existingPatientId]);
+
+  const loadExistingPatient = async (patientId: string) => {
+    setIsLoadingPatient(true);
+    try {
+      const { data: patient, error } = await supabase
+        .from("patients")
+        .select("id, name, age, observations")
+        .eq("id", patientId)
+        .single();
+
+      if (error) throw error;
+      if (patient) {
+        setExistingPatient(patient);
+        setPatientData({
+          name: patient.name,
+          age: patient.age?.toString() || "",
+          gender: "feminino",
+          muscleStrength: "medium",
+          observations: patient.observations || "",
+        });
+      }
+    } catch (error) {
+      console.error("Error loading patient:", error);
+      toast({
+        title: "Erro ao carregar paciente",
+        description: "Não foi possível carregar os dados do paciente.",
+        variant: "destructive",
+      });
+      navigate("/dashboard/patients");
+    } finally {
+      setIsLoadingPatient(false);
+    }
+  };
 
   const handleProductChange = (productId: string, factor: number) => {
     const previousFactor = conversionFactor;
@@ -419,51 +478,59 @@ export function NewAnalysisWizard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      const { data: patient, error: patientError } = await supabase
-        .from('patients')
-        .insert({
-          user_id: user.id,
-          name: patientData.name,
-          age: patientData.age ? parseInt(patientData.age) : null,
-          observations: patientData.observations,
-        })
-        .select()
-        .single();
+      let patientId: string;
 
-      if (patientError) throw patientError;
+      // If return mode, use existing patient; otherwise create new patient
+      if (isReturnMode && existingPatient) {
+        patientId = existingPatient.id;
+      } else {
+        const { data: newPatient, error: patientError } = await supabase
+          .from('patients')
+          .insert({
+            user_id: user.id,
+            name: patientData.name,
+            age: patientData.age ? parseInt(patientData.age) : null,
+            observations: patientData.observations,
+          })
+          .select()
+          .single();
+
+        if (patientError) throw patientError;
+        patientId = newPatient.id;
+      }
 
       // Upload all photos in parallel
       const photoUploadPromises = (Object.keys(photos) as PhotoType[]).map(async (photoType) => {
         if (photos[photoType]) {
           return {
             type: photoType,
-            url: await uploadPhotoToStorage(photos[photoType]!, user.id, patient.id, photoType)
+            url: await uploadPhotoToStorage(photos[photoType]!, user.id, patientId, photoType)
           };
         }
         return { type: photoType, url: null };
       });
       
       const uploadedPhotos = await Promise.all(photoUploadPromises);
-      const photoUrls: Record<string, string | null> = {};
+      const uploadedPhotoUrls: Record<string, string | null> = {};
       uploadedPhotos.forEach(p => {
-        photoUrls[`${p.type}_photo_url`] = p.url;
+        uploadedPhotoUrls[`${p.type}_photo_url`] = p.url;
       });
 
       const { error: analysisError } = await supabase
         .from('analyses')
         .insert({
           user_id: user.id,
-          patient_id: patient.id,
+          patient_id: patientId,
           procerus_dosage: aiAnalysis?.totalDosage.procerus || 0,
           corrugator_dosage: aiAnalysis?.totalDosage.corrugator || 0,
-          resting_photo_url: photoUrls.resting_photo_url,
-          glabellar_photo_url: photoUrls.glabellar_photo_url,
-          frontal_photo_url: photoUrls.frontal_photo_url,
-          smile_photo_url: photoUrls.smile_photo_url,
-          nasal_photo_url: photoUrls.nasal_photo_url,
-          perioral_photo_url: photoUrls.perioral_photo_url,
-          profile_left_photo_url: photoUrls.profile_left_photo_url,
-          profile_right_photo_url: photoUrls.profile_right_photo_url,
+          resting_photo_url: uploadedPhotoUrls.resting_photo_url,
+          glabellar_photo_url: uploadedPhotoUrls.glabellar_photo_url,
+          frontal_photo_url: uploadedPhotoUrls.frontal_photo_url,
+          smile_photo_url: uploadedPhotoUrls.smile_photo_url,
+          nasal_photo_url: uploadedPhotoUrls.nasal_photo_url,
+          perioral_photo_url: uploadedPhotoUrls.perioral_photo_url,
+          profile_left_photo_url: uploadedPhotoUrls.profile_left_photo_url,
+          profile_right_photo_url: uploadedPhotoUrls.profile_right_photo_url,
           ai_injection_points: aiAnalysis?.injectionPoints as any || null,
           ai_clinical_notes: aiAnalysis?.clinicalNotes || null,
           ai_confidence: aiAnalysis?.confidence || null,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Routes, Route } from "react-router-dom";
+import { useNavigate, Routes, Route, useParams } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { DashboardStats } from "@/components/DashboardStats";
@@ -10,6 +10,7 @@ import { ProfileSettings } from "@/components/ProfileSettings";
 import { RecentAnalyses } from "@/components/RecentAnalyses";
 import { BeforeAfterComparison } from "@/components/BeforeAfterComparison";
 import { PatientEvolutionDashboard } from "@/components/PatientEvolutionDashboard";
+import { UpcomingReturns } from "@/components/UpcomingReturns";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, PlusCircle, Users, TrendingUp, Activity } from "lucide-react";
@@ -81,6 +82,11 @@ function DashboardHome() {
       <DashboardStats patientsCount={stats.patients} analysesCount={stats.analyses} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <RecentAnalyses analyses={recentAnalyses} />
+        <UpcomingReturns />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-border/50">
           <CardHeader>
             <CardTitle className="text-lg font-medium">Ações Rápidas</CardTitle>
@@ -120,8 +126,6 @@ function DashboardHome() {
             </Button>
           </CardContent>
         </Card>
-
-        <RecentAnalyses analyses={recentAnalyses} />
       </div>
 
       <Card className="border-border/50">
@@ -254,6 +258,16 @@ function NewAnalysisPage() {
   );
 }
 
+function NewAnalysisWithPatientPage() {
+  const { patientId } = useParams();
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-light text-foreground">Nova Consulta</h1>
+      <NewAnalysisWizard existingPatientId={patientId} />
+    </div>
+  );
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, loading, signOut } = useAuth();
@@ -290,6 +304,7 @@ const Dashboard = () => {
               <Route index element={<DashboardHome />} />
               <Route path="patients" element={<PatientsPage />} />
               <Route path="new-analysis" element={<NewAnalysisPage />} />
+              <Route path="new-analysis/:patientId" element={<NewAnalysisWithPatientPage />} />
               <Route path="protocols" element={<ProtocolsPage />} />
               <Route path="comparison" element={<ComparisonPage />} />
               <Route path="evolution" element={<EvolutionPage />} />
