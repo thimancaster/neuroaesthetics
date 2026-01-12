@@ -137,6 +137,10 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
     navigate(`/dashboard/evolution?patientId=${patient.id}`);
   };
 
+  const handleViewProfile = (patient: Patient) => {
+    navigate(`/dashboard/patients/${patient.id}`);
+  };
+
   return (
     <div className="space-y-4">
       {/* Search Bar */}
@@ -171,7 +175,12 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <User className="w-4 h-4 text-primary" />
-                      <h3 className="font-medium text-foreground truncate">{patient.name}</h3>
+                      <h3 
+                        className="font-medium text-foreground truncate hover:text-primary cursor-pointer"
+                        onClick={() => handleViewProfile(patient)}
+                      >
+                        {patient.name}
+                      </h3>
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                       {patient.age && (
@@ -209,12 +218,14 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleViewProfile(patient)}>
+                          <User className="w-4 h-4 mr-2" />
+                          Ver Prontuário
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleViewEvolution(patient)}>
                           <Activity className="w-4 h-4 mr-2" />
                           Ver Evolução
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEditDialog(patient)}>
-                          <Edit2 className="w-4 h-4 mr-2" />
                           Editar Dados
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />

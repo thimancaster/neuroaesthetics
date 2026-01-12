@@ -293,14 +293,37 @@ serve(async (req) => {
   }
 
   try {
-    const { imageUrls, patientGender, patientAge, isFirstTime, previousDosage } = await req.json();
+    const { 
+      imageUrls, 
+      patientGender, 
+      patientAge, 
+      isFirstTime, 
+      previousDosage,
+      patientHistory,
+      muscleStrength
+    } = await req.json();
     
+    // Validate that photos were provided - CRITICAL for accurate analysis
     if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
+      console.error("No images provided for analysis");
       return new Response(
-        JSON.stringify({ error: "Nenhuma imagem fornecida" }),
+        JSON.stringify({ error: "Nenhuma imagem fornecida. A análise de IA requer pelo menos 1 foto facial." }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const validImages = imageUrls.filter((u: string) => u && u.length > 0);
+    
+    if (validImages.length === 0) {
+      console.error("All provided image URLs are empty");
+      return new Response(
+        JSON.stringify({ error: "Todas as URLs de imagem estão vazias. Capture fotos do paciente antes de analisar." }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Log photo count for debugging
+    console.log(`Analyzing ${validImages.length} photos for facial assessment`);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -311,17 +334,50 @@ serve(async (req) => {
       );
     }
 
-    const validImages = imageUrls.filter((u: string) => u);
     const hasDynamicPhotos = validImages.length > 1;
     
+    // Build patient context with history
     const patientContext = [];
     if (patientGender) patientContext.push(`Gênero: ${patientGender}`);
     if (patientAge) patientContext.push(`Idade: ${patientAge} anos`);
-    if (isFirstTime !== undefined) patientContext.push(`Primeira aplicação: ${isFirstTime ? 'Sim' : 'Não'}`);
-    if (previousDosage) patientContext.push(`Dosagem anterior total: ${previousDosage}U`);
+    if (muscleStrength) patientContext.push(`Força muscular avaliada: ${muscleStrength}`);
+    
+    // Determine if this is a return consultation based on history
+    const isReturnConsultation = patientHistory && patientHistory.consultationCount > 0;
+    patientContext.push(`Tipo de consulta: ${isReturnConsultation ? 'RETORNO' : 'PRIMEIRA APLICAÇÃO'}`);
+    
+    // Add patient history context for AI decision-making
+    if (patientHistory) {
+      if (patientHistory.consultationCount > 0) {
+        patientContext.push(`Consultas anteriores: ${patientHistory.consultationCount}`);
+      }
+      if (patientHistory.lastDosages) {
+        const lastTotal = Object.values(patientHistory.lastDosages).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
+        patientContext.push(`Última dosagem total: ${lastTotal}U`);
+        if (patientHistory.lastDosages.procerus) patientContext.push(`  - Prócero: ${patientHistory.lastDosages.procerus}U`);
+        if (patientHistory.lastDosages.corrugator) patientContext.push(`  - Corrugador: ${patientHistory.lastDosages.corrugator}U`);
+        if (patientHistory.lastDosages.frontalis) patientContext.push(`  - Frontal: ${patientHistory.lastDosages.frontalis}U`);
+      }
+      if (patientHistory.averageInterval) {
+        patientContext.push(`Intervalo médio entre sessões: ${patientHistory.averageInterval} dias`);
+        if (patientHistory.averageInterval < 90) {
+          patientContext.push(`⚠️ ALERTA: Intervalo curto! Considerar se houve necessidade de retoque ou subdosagem anterior.`);
+        }
+      }
+      if (patientHistory.lastConsultationDate) {
+        patientContext.push(`Última consulta: ${patientHistory.lastConsultationDate}`);
+      }
+      if (patientHistory.clinicalResponse) {
+        patientContext.push(`Resposta clínica anterior: ${patientHistory.clinicalResponse}`);
+      }
+    } else if (isFirstTime !== undefined) {
+      patientContext.push(`Primeira aplicação: ${isFirstTime ? 'Sim' : 'Não'}`);
+    }
+    
+    if (previousDosage) patientContext.push(`Dosagem anterior total informada: ${previousDosage}U`);
 
     const contextStr = patientContext.length > 0 
-      ? `\n\nINFORMAÇÕES DO PACIENTE:\n${patientContext.join('\n')}`
+      ? `\n\nINFORMAÇÕES DO PACIENTE E HISTÓRICO:\n${patientContext.join('\n')}\n\n${isReturnConsultation ? 'ORIENTAÇÃO PARA RETORNO: Considere o histórico ao ajustar dosagens. Se paciente teve boa resposta, mantenha protocolo similar. Se precisou de retoque, considere aumentar dose 10-15%. Se teve efeitos indesejados, seja mais conservador.' : 'ORIENTAÇÃO PRIMEIRA APLICAÇÃO: Seja conservador nas dosagens iniciais. Prefira subdosar levemente e ajustar em retorno do que arriscar efeitos indesejados.'}`
       : '';
 
     const content: any[] = [

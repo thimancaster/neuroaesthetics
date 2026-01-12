@@ -11,9 +11,11 @@ import { RecentAnalyses } from "@/components/RecentAnalyses";
 import { BeforeAfterComparison } from "@/components/BeforeAfterComparison";
 import { PatientEvolutionDashboard } from "@/components/PatientEvolutionDashboard";
 import { UpcomingReturns } from "@/components/UpcomingReturns";
+import { PatientProfile } from "@/components/PatientProfile";
+import { AppointmentsManagement } from "@/components/AppointmentsManagement";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, PlusCircle, Users, TrendingUp, Activity } from "lucide-react";
+import { Loader2, PlusCircle, Users, TrendingUp, Activity, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -107,6 +109,14 @@ function DashboardHome() {
             >
               <Users className="w-4 h-4 mr-3" />
               Ver Pacientes Cadastrados
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => navigate("/dashboard/appointments")}
+            >
+              <CalendarDays className="w-4 h-4 mr-3" />
+              Gerenciar Agendamentos
             </Button>
             <Button
               variant="outline"
@@ -249,6 +259,14 @@ function EvolutionPage() {
   );
 }
 
+function AppointmentsPage() {
+  return <AppointmentsManagement />;
+}
+
+function PatientProfilePage() {
+  return <PatientProfile />;
+}
+
 function NewAnalysisPage() {
   return (
     <div className="space-y-6">
@@ -303,6 +321,8 @@ const Dashboard = () => {
             <Routes>
               <Route index element={<DashboardHome />} />
               <Route path="patients" element={<PatientsPage />} />
+              <Route path="patients/:patientId" element={<PatientProfilePage />} />
+              <Route path="appointments" element={<AppointmentsPage />} />
               <Route path="new-analysis" element={<NewAnalysisPage />} />
               <Route path="new-analysis/:patientId" element={<NewAnalysisWithPatientPage />} />
               <Route path="protocols" element={<ProtocolsPage />} />
