@@ -1,4 +1,4 @@
-import { Users, PlusCircle, FileText, Settings, LogOut, LayoutDashboard, Activity, TrendingUp } from "lucide-react";
+import { Users, PlusCircle, FileText, Settings, LogOut, LayoutDashboard, Activity, TrendingUp, CalendarDays } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Pacientes", url: "/dashboard/patients", icon: Users },
+  { title: "Agendamentos", url: "/dashboard/appointments", icon: CalendarDays },
   { title: "Nova Análise", url: "/dashboard/new-analysis", icon: PlusCircle },
   { title: "Protocolos", url: "/dashboard/protocols", icon: FileText },
   { title: "Evolução", url: "/dashboard/evolution", icon: Activity },
