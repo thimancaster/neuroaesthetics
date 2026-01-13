@@ -226,6 +226,8 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
                           <Activity className="w-4 h-4 mr-2" />
                           Ver Evolução
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEditDialog(patient)}>
+                          <Edit2 className="w-4 h-4 mr-2" />
                           Editar Dados
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
