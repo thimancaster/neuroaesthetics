@@ -34,15 +34,26 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO, differenceInDays } from "date-fns";
+import { format, parseISO, differenceInDays, differenceInYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { PatientTreatmentHistory } from "./PatientTreatmentHistory";
 import { AppointmentScheduler } from "./AppointmentScheduler";
+import { PatientEditDialog } from "./PatientEditDialog";
 
 interface Patient {
   id: string;
   name: string;
   age: number | null;
+  gender: string | null;
+  phone: string | null;
+  email: string | null;
+  birth_date: string | null;
+  cpf: string | null;
+  address: string | null;
+  allergies: string | null;
+  medical_history: string | null;
+  emergency_contact: string | null;
+  emergency_phone: string | null;
   observations: string | null;
   created_at: string;
   updated_at: string;
@@ -82,15 +93,8 @@ export function PatientProfile() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
-
-  const [editForm, setEditForm] = useState({
-    name: "",
-    age: "",
-    observations: "",
-  });
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   useEffect(() => {
     if (patientId) {
@@ -122,11 +126,8 @@ export function PatientProfile() {
 
       if (patientRes.error) throw patientRes.error;
       setPatient(patientRes.data);
-      setEditForm({
-        name: patientRes.data.name,
-        age: patientRes.data.age?.toString() || "",
-        observations: patientRes.data.observations || "",
-      });
+      setAnalyses(analysesRes.data || []);
+      setAppointments(appointmentsRes.data || []);
       setAnalyses(analysesRes.data || []);
       setAppointments(appointmentsRes.data || []);
     } catch (error: any) {
@@ -141,32 +142,22 @@ export function PatientProfile() {
     }
   };
 
-  const handleSaveEdit = async () => {
-    if (!patient) return;
-    setIsSaving(true);
-
-    const { error } = await supabase
-      .from("patients")
-      .update({
-        name: editForm.name,
-        age: editForm.age ? parseInt(editForm.age) : null,
-        observations: editForm.observations,
-      })
-      .eq("id", patient.id);
-
-    setIsSaving(false);
-
-    if (error) {
-      toast({
-        title: "Erro ao atualizar",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({ title: "Paciente atualizado!" });
-      setIsEditing(false);
-      fetchPatientData();
+  const calculateAge = (birthDate: string | null): number | null => {
+    if (!birthDate) return null;
+    try {
+      return differenceInYears(new Date(), parseISO(birthDate));
+    } catch {
+      return null;
     }
+  };
+
+  const formatPhone = (phone: string | null): string => {
+    if (!phone) return "-";
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length === 11) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    }
+    return phone;
   };
 
   const getTotalDosage = (analysis: Analysis) => {
@@ -523,34 +514,96 @@ export function PatientProfile() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Dados Cadastrais</CardTitle>
-                <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                <Button variant="outline" size="sm" onClick={() => setShowEditDialog(true)}>
                   <Edit2 className="w-4 h-4 mr-2" />
                   Editar
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Nome</Label>
-                  <p className="font-medium">{patient.name}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Idade</Label>
-                  <p className="font-medium">{patient.age || "-"} anos</p>
-                </div>
-              </div>
+            <CardContent className="space-y-6">
+              {/* Dados Pessoais */}
               <div>
-                <Label className="text-muted-foreground">Observações</Label>
-                <p className="text-sm mt-1">{patient.observations || "Nenhuma observação registrada."}</p>
+                <h4 className="text-sm font-medium text-muted-foreground mb-3">Dados Pessoais</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Nome</Label>
+                    <p className="font-medium">{patient.name}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Idade</Label>
+                    <p className="font-medium">
+                      {patient.birth_date 
+                        ? `${calculateAge(patient.birth_date)} anos` 
+                        : patient.age 
+                          ? `${patient.age} anos` 
+                          : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Gênero</Label>
+                    <p className="font-medium capitalize">{patient.gender || "-"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Telefone</Label>
+                    <p className="font-medium">{formatPhone(patient.phone)}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Email</Label>
+                    <p className="font-medium">{patient.email || "-"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">CPF</Label>
+                    <p className="font-medium">{patient.cpf || "-"}</p>
+                  </div>
+                </div>
               </div>
+
+              {/* Endereço */}
+              {patient.address && (
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Endereço</h4>
+                  <p className="text-sm">{patient.address}</p>
+                </div>
+              )}
+
+              {/* Histórico Médico */}
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground mb-3">Histórico Médico</h4>
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Alergias</Label>
+                    <p className="text-sm">{patient.allergies || "Nenhuma alergia registrada"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground text-xs">Histórico</Label>
+                    <p className="text-sm">{patient.medical_history || "Nenhum histórico registrado"}</p>
+                  </div>
+                  {(patient.emergency_contact || patient.emergency_phone) && (
+                    <div>
+                      <Label className="text-muted-foreground text-xs">Contato de Emergência</Label>
+                      <p className="text-sm">
+                        {patient.emergency_contact}
+                        {patient.emergency_phone && ` - ${formatPhone(patient.emergency_phone)}`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground mb-2">Observações</h4>
+                <p className="text-sm">{patient.observations || "Nenhuma observação registrada."}</p>
+              </div>
+
+              {/* Timestamps */}
               <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                 <div>
-                  <Label className="text-muted-foreground">Cadastrado em</Label>
+                  <Label className="text-muted-foreground text-xs">Cadastrado em</Label>
                   <p className="text-sm">{format(parseISO(patient.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Última atualização</Label>
+                  <Label className="text-muted-foreground text-xs">Última atualização</Label>
                   <p className="text-sm">{format(parseISO(patient.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
                 </div>
               </div>
@@ -559,50 +612,13 @@ export function PatientProfile() {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Dialog */}
-      <Dialog open={isEditing} onOpenChange={setIsEditing}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Paciente</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Nome Completo</Label>
-              <Input
-                id="edit-name"
-                value={editForm.name}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-age">Idade</Label>
-              <Input
-                id="edit-age"
-                type="number"
-                value={editForm.age}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, age: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-obs">Observações</Label>
-              <Textarea
-                id="edit-obs"
-                value={editForm.observations}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, observations: e.target.value }))}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditing(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={isSaving || !editForm.name.trim()}>
-              {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Patient Edit Dialog */}
+      <PatientEditDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        patient={patient}
+        onSaved={fetchPatientData}
+      />
 
       {/* Appointment Scheduler */}
       <AppointmentScheduler
