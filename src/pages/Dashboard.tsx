@@ -13,6 +13,7 @@ import { PatientEvolutionDashboard } from "@/components/PatientEvolutionDashboar
 import { UpcomingReturns } from "@/components/UpcomingReturns";
 import { PatientProfile } from "@/components/PatientProfile";
 import { AppointmentsManagement } from "@/components/AppointmentsManagement";
+import { SmartAlerts } from "@/components/SmartAlerts";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, PlusCircle, Users, TrendingUp, Activity, CalendarDays } from "lucide-react";
@@ -83,10 +84,15 @@ function DashboardHome() {
 
       <DashboardStats patientsCount={stats.patients} analysesCount={stats.analyses} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RecentAnalyses analyses={recentAnalyses} />
-        <UpcomingReturns />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <RecentAnalyses analyses={recentAnalyses} />
+        </div>
+        <SmartAlerts />
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <UpcomingReturns />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-border/50">

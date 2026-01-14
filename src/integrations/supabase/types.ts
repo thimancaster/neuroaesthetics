@@ -227,29 +227,59 @@ export type Database = {
       }
       patients: {
         Row: {
+          address: string | null
           age: number | null
+          allergies: string | null
+          birth_date: string | null
+          cpf: string | null
           created_at: string
+          email: string | null
+          emergency_contact: string | null
+          emergency_phone: string | null
+          gender: string | null
           id: string
+          medical_history: string | null
           name: string
           observations: string | null
+          phone: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          address?: string | null
           age?: number | null
+          allergies?: string | null
+          birth_date?: string | null
+          cpf?: string | null
           created_at?: string
+          email?: string | null
+          emergency_contact?: string | null
+          emergency_phone?: string | null
+          gender?: string | null
           id?: string
+          medical_history?: string | null
           name: string
           observations?: string | null
+          phone?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          address?: string | null
           age?: number | null
+          allergies?: string | null
+          birth_date?: string | null
+          cpf?: string | null
           created_at?: string
+          email?: string | null
+          emergency_contact?: string | null
+          emergency_phone?: string | null
+          gender?: string | null
           id?: string
+          medical_history?: string | null
           name?: string
           observations?: string | null
+          phone?: string | null
           updated_at?: string
           user_id?: string
         }
