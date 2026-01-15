@@ -43,7 +43,8 @@ interface PatientData {
 interface PatientEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  patient: PatientData | null;
+  patient?: PatientData | null;
+  patientId?: string | null;
   onSaved: () => void;
 }
 
@@ -51,10 +52,13 @@ export function PatientEditDialog({
   open,
   onOpenChange,
   patient,
+  patientId,
   onSaved,
 }: PatientEditDialogProps) {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadedPatient, setLoadedPatient] = useState<PatientData | null>(null);
   const [form, setForm] = useState<Omit<PatientData, "id">>({
     name: "",
     age: null,
@@ -71,25 +75,58 @@ export function PatientEditDialog({
     observations: "",
   });
 
+  // Fetch patient data if only patientId is provided
   useEffect(() => {
-    if (patient) {
+    if (open && patientId && !patient) {
+      fetchPatient(patientId);
+    }
+  }, [open, patientId, patient]);
+
+  const fetchPatient = async (id: string) => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("patients")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+      setLoadedPatient(data as PatientData);
+    } catch (error: any) {
+      toast({
+        title: "Erro ao carregar paciente",
+        description: error.message,
+        variant: "destructive",
+      });
+      onOpenChange(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Use either passed patient or loaded patient
+  const activePatient = patient || loadedPatient;
+
+  useEffect(() => {
+    if (activePatient) {
       setForm({
-        name: patient.name || "",
-        age: patient.age,
-        gender: patient.gender || "feminino",
-        phone: patient.phone || "",
-        email: patient.email || "",
-        birth_date: patient.birth_date || "",
-        cpf: patient.cpf || "",
-        address: patient.address || "",
-        allergies: patient.allergies || "",
-        medical_history: patient.medical_history || "",
-        emergency_contact: patient.emergency_contact || "",
-        emergency_phone: patient.emergency_phone || "",
-        observations: patient.observations || "",
+        name: activePatient.name || "",
+        age: activePatient.age,
+        gender: activePatient.gender || "feminino",
+        phone: activePatient.phone || "",
+        email: activePatient.email || "",
+        birth_date: activePatient.birth_date || "",
+        cpf: activePatient.cpf || "",
+        address: activePatient.address || "",
+        allergies: activePatient.allergies || "",
+        medical_history: activePatient.medical_history || "",
+        emergency_contact: activePatient.emergency_contact || "",
+        emergency_phone: activePatient.emergency_phone || "",
+        observations: activePatient.observations || "",
       });
     }
-  }, [patient]);
+  }, [activePatient]);
 
   const calculateAge = (birthDate: string): number | null => {
     if (!birthDate) return null;
@@ -156,11 +193,12 @@ export function PatientEditDialog({
       const { error } = await supabase
         .from("patients")
         .update(updateData)
-        .eq("id", patient.id);
+        .eq("id", activePatient!.id);
 
       if (error) throw error;
 
       toast({ title: "Paciente atualizado com sucesso!" });
+      setLoadedPatient(null);
       onSaved();
       onOpenChange(false);
     } catch (error: any) {
@@ -174,7 +212,19 @@ export function PatientEditDialog({
     }
   };
 
-  if (!patient) return null;
+  if (isLoading) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (!activePatient) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -66,6 +66,7 @@ interface ExistingPatient {
   id: string;
   name: string;
   age: number | null;
+  gender: string | null;
   observations: string | null;
 }
 
@@ -85,6 +86,15 @@ export function NewAnalysisWizard({ existingPatientId }: NewAnalysisWizardProps)
   const [existingPatient, setExistingPatient] = useState<ExistingPatient | null>(null);
   const [isLoadingPatient, setIsLoadingPatient] = useState(false);
   const isReturnMode = !!existingPatientId;
+  
+  // Patient history for AI context
+  const [patientHistory, setPatientHistory] = useState<{
+    consultationCount: number;
+    lastDosages: Record<string, number>;
+    averageInterval: number | null;
+    lastConsultationDate: string | null;
+    clinicalResponse: string | null;
+  } | null>(null);
   
   // Product/toxin selection state
   const [selectedProduct, setSelectedProduct] = useState("botox");
@@ -138,9 +148,10 @@ export function NewAnalysisWizard({ existingPatientId }: NewAnalysisWizardProps)
   const loadExistingPatient = async (patientId: string) => {
     setIsLoadingPatient(true);
     try {
+      // Fetch patient with extended fields
       const { data: patient, error } = await supabase
         .from("patients")
-        .select("id, name, age, observations")
+        .select("id, name, age, gender, observations")
         .eq("id", patientId)
         .single();
 
@@ -150,10 +161,59 @@ export function NewAnalysisWizard({ existingPatientId }: NewAnalysisWizardProps)
         setPatientData({
           name: patient.name,
           age: patient.age?.toString() || "",
-          gender: "feminino",
+          gender: (patient.gender as "feminino" | "masculino") || "feminino",
           muscleStrength: "medium",
           observations: patient.observations || "",
         });
+        
+        // Fetch patient history for AI context
+        const { data: analyses } = await supabase
+          .from("analyses")
+          .select("id, created_at, procerus_dosage, corrugator_dosage, ai_injection_points, ai_clinical_notes, status")
+          .eq("patient_id", patientId)
+          .eq("status", "completed")
+          .order("created_at", { ascending: false })
+          .limit(10);
+        
+        if (analyses && analyses.length > 0) {
+          const lastAnalysis = analyses[0];
+          
+          // Calculate dosages from last analysis
+          const lastDosages: Record<string, number> = {
+            procerus: lastAnalysis.procerus_dosage || 0,
+            corrugator: lastAnalysis.corrugator_dosage || 0,
+          };
+          
+          // Extract more detailed dosages from ai_injection_points if available
+          if (lastAnalysis.ai_injection_points && Array.isArray(lastAnalysis.ai_injection_points)) {
+            const points = lastAnalysis.ai_injection_points as any[];
+            const frontalisTotal = points.filter(p => p.muscle === "frontalis").reduce((sum, p) => sum + (p.dosage || 0), 0);
+            const orbicularisTotal = points.filter(p => p.muscle?.startsWith("orbicularis_oculi")).reduce((sum, p) => sum + (p.dosage || 0), 0);
+            if (frontalisTotal > 0) lastDosages.frontalis = frontalisTotal;
+            if (orbicularisTotal > 0) lastDosages.orbicularis = orbicularisTotal;
+          }
+          
+          // Calculate average interval between consultations
+          let avgInterval: number | null = null;
+          if (analyses.length >= 2) {
+            let totalDays = 0;
+            for (let i = 1; i < Math.min(analyses.length, 5); i++) {
+              const days = Math.abs(
+                (new Date(analyses[i - 1].created_at).getTime() - new Date(analyses[i].created_at).getTime()) / (1000 * 60 * 60 * 24)
+              );
+              totalDays += days;
+            }
+            avgInterval = Math.round(totalDays / (Math.min(analyses.length, 5) - 1));
+          }
+          
+          setPatientHistory({
+            consultationCount: analyses.length,
+            lastDosages,
+            averageInterval: avgInterval,
+            lastConsultationDate: lastAnalysis.created_at.split("T")[0],
+            clinicalResponse: lastAnalysis.ai_clinical_notes || null,
+          });
+        }
       }
     } catch (error) {
       console.error("Error loading patient:", error);
@@ -295,7 +355,9 @@ export function NewAnalysisWizard({ existingPatientId }: NewAnalysisWizardProps)
         body: { 
           imageUrls,
           patientGender: patientData.gender,
-          muscleStrength: patientData.muscleStrength
+          muscleStrength: patientData.muscleStrength,
+          patientAge: patientData.age ? parseInt(patientData.age) : undefined,
+          patientHistory: isReturnMode ? patientHistory : null,
         }
       });
 
