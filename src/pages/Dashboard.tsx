@@ -94,7 +94,6 @@ function DashboardHome() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <UpcomingReturns />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-border/50">
           <CardHeader>
             <CardTitle className="text-lg font-medium">Ações Rápidas</CardTitle>
