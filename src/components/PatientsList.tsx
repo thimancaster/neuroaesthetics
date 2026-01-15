@@ -3,15 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,10 +20,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Search, Edit2, Trash2, User, Calendar, FileText, Loader2, PlusCircle, Activity, MoreVertical, History } from "lucide-react";
+import { Search, Trash2, User, Calendar, FileText, Loader2, PlusCircle, Activity, MoreVertical } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PatientQuickStats } from "./PatientQuickStats";
+import { PatientEditDialog } from "./PatientEditDialog";
 
 interface Patient {
   id: string;
@@ -50,64 +42,24 @@ interface PatientsListProps {
 export function PatientsList({ patients, onRefresh }: PatientsListProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
-  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [deletingPatient, setDeletingPatient] = useState<Patient | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-
-  const [editForm, setEditForm] = useState({
-    name: "",
-    age: "",
-    observations: "",
-  });
 
   const filteredPatients = patients.filter((p) =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const openEditDialog = (patient: Patient) => {
-    setEditingPatient(patient);
-    setEditForm({
-      name: patient.name,
-      age: patient.age?.toString() || "",
-      observations: patient.observations || "",
-    });
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingPatient) return;
-    setIsLoading(true);
-
-    const { error } = await supabase
-      .from("patients")
-      .update({
-        name: editForm.name,
-        age: editForm.age ? parseInt(editForm.age) : null,
-        observations: editForm.observations,
-      })
-      .eq("id", editingPatient.id);
-
-    setIsLoading(false);
-
-    if (error) {
-      toast({
-        title: "Erro ao atualizar",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({ title: "Paciente atualizado com sucesso!" });
-      setEditingPatient(null);
-      onRefresh();
-    }
-  };
-
   const handleDelete = async () => {
     if (!deletingPatient) return;
     setIsLoading(true);
 
-    // Delete related analyses first
-    await supabase.from("analyses").delete().eq("patient_id", deletingPatient.id);
+    // Delete related analyses and appointments first
+    await Promise.all([
+      supabase.from("analyses").delete().eq("patient_id", deletingPatient.id),
+      supabase.from("appointments").delete().eq("patient_id", deletingPatient.id),
+    ]);
 
     const { error } = await supabase
       .from("patients")
@@ -226,8 +178,8 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
                           <Activity className="w-4 h-4 mr-2" />
                           Ver Evolução
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEditDialog(patient)}>
-                          <Edit2 className="w-4 h-4 mr-2" />
+                        <DropdownMenuItem onClick={() => setEditingPatientId(patient.id)}>
+                          <User className="w-4 h-4 mr-2" />
                           Editar Dados
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -248,50 +200,16 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
         </div>
       )}
 
-      {/* Edit Dialog */}
-      <Dialog open={!!editingPatient} onOpenChange={() => setEditingPatient(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Paciente</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Nome Completo</Label>
-              <Input
-                id="edit-name"
-                value={editForm.name}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-age">Idade</Label>
-              <Input
-                id="edit-age"
-                type="number"
-                value={editForm.age}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, age: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-obs">Observações</Label>
-              <Textarea
-                id="edit-obs"
-                value={editForm.observations}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, observations: e.target.value }))}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingPatient(null)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={isLoading || !editForm.name.trim()}>
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Patient Edit Dialog (comprehensive) */}
+      <PatientEditDialog
+        open={!!editingPatientId}
+        onOpenChange={(open) => !open && setEditingPatientId(null)}
+        patientId={editingPatientId}
+        onSaved={() => {
+          setEditingPatientId(null);
+          onRefresh();
+        }}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingPatient} onOpenChange={() => setDeletingPatient(null)}>
