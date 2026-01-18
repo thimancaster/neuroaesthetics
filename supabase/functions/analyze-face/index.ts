@@ -1,7 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
+
+// Restrict CORS to known application domains
+const getAllowedOrigin = () => {
+  const appUrl = Deno.env.get('APP_URL');
+  if (appUrl) return appUrl;
+  
+  // Default allowed origins for the application
+  return 'https://neuroaesthetics.lovable.app';
+};
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': getAllowedOrigin(),
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -287,12 +297,70 @@ Antes de finalizar, VERIFIQUE:
 6. SEJA CONSERVADOR nas dosagens (segurança primeiro)
 7. RETORNE APENAS o JSON, sem markdown ou texto adicional`;
 
+// Input validation functions
+function validateImageUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  
+  // Allow base64 images
+  if (url.startsWith('data:image/')) return true;
+  
+  // Allow Supabase storage URLs
+  if (url.includes('supabase.co') || url.includes('supabase.in')) return true;
+  
+  return false;
+}
+
+function validateGender(gender: unknown): gender is 'masculino' | 'feminino' | undefined {
+  if (gender === undefined || gender === null) return true;
+  return gender === 'masculino' || gender === 'feminino';
+}
+
+function validateAge(age: unknown): age is number | undefined {
+  if (age === undefined || age === null) return true;
+  if (typeof age !== 'number') return false;
+  return age >= 0 && age <= 150 && Number.isInteger(age);
+}
+
+function validateMuscleStrength(strength: unknown): strength is 'low' | 'medium' | 'high' | undefined {
+  if (strength === undefined || strength === null) return true;
+  return strength === 'low' || strength === 'medium' || strength === 'high';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // ===== AUTHENTICATION CHECK =====
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('No authorization header provided');
+      return new Response(
+        JSON.stringify({ error: 'Autenticação necessária' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify user token
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      console.error('Authentication failed:', authError?.message);
+      return new Response(
+        JSON.stringify({ error: 'Sessão inválida. Faça login novamente.' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Authenticated user: ${user.id}`);
+
+    // ===== INPUT PARSING AND VALIDATION =====
     const { 
       imageUrls, 
       patientGender, 
@@ -312,6 +380,41 @@ serve(async (req) => {
       );
     }
 
+    // Validate each image URL
+    for (const url of imageUrls) {
+      if (!validateImageUrl(url)) {
+        console.error("Invalid image URL format:", url?.substring(0, 50));
+        return new Response(
+          JSON.stringify({ error: "Formato de imagem inválido. Apenas imagens base64 ou do armazenamento são permitidas." }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Validate gender
+    if (!validateGender(patientGender)) {
+      return new Response(
+        JSON.stringify({ error: "Gênero inválido. Use 'masculino' ou 'feminino'." }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate age
+    if (!validateAge(patientAge)) {
+      return new Response(
+        JSON.stringify({ error: "Idade inválida. Deve ser um número inteiro entre 0 e 150." }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate muscle strength
+    if (!validateMuscleStrength(muscleStrength)) {
+      return new Response(
+        JSON.stringify({ error: "Força muscular inválida. Use 'low', 'medium' ou 'high'." }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const validImages = imageUrls.filter((u: string) => u && u.length > 0);
     
     if (validImages.length === 0) {
@@ -323,7 +426,7 @@ serve(async (req) => {
     }
 
     // Log photo count for debugging
-    console.log(`Analyzing ${validImages.length} photos for facial assessment`);
+    console.log(`Analyzing ${validImages.length} photos for user ${user.id}`);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -352,7 +455,7 @@ serve(async (req) => {
         patientContext.push(`Consultas anteriores: ${patientHistory.consultationCount}`);
       }
       if (patientHistory.lastDosages) {
-        const lastTotal = Object.values(patientHistory.lastDosages).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
+        const lastTotal = Object.values(patientHistory.lastDosages).reduce((sum: number, val: unknown) => sum + (Number(val) || 0), 0);
         patientContext.push(`Última dosagem total: ${lastTotal}U`);
         if (patientHistory.lastDosages.procerus) patientContext.push(`  - Prócero: ${patientHistory.lastDosages.procerus}U`);
         if (patientHistory.lastDosages.corrugator) patientContext.push(`  - Corrugador: ${patientHistory.lastDosages.corrugator}U`);
@@ -380,7 +483,7 @@ serve(async (req) => {
       ? `\n\nINFORMAÇÕES DO PACIENTE E HISTÓRICO:\n${patientContext.join('\n')}\n\n${isReturnConsultation ? 'ORIENTAÇÃO PARA RETORNO: Considere o histórico ao ajustar dosagens. Se paciente teve boa resposta, mantenha protocolo similar. Se precisou de retoque, considere aumentar dose 10-15%. Se teve efeitos indesejados, seja mais conservador.' : 'ORIENTAÇÃO PRIMEIRA APLICAÇÃO: Seja conservador nas dosagens iniciais. Prefira subdosar levemente e ajustar em retorno do que arriscar efeitos indesejados.'}`
       : '';
 
-    const content: any[] = [
+    const content: unknown[] = [
       {
         type: "text",
         text: `TAREFA: Analise estas ${validImages.length} foto(s) facial(is) para planejamento PRECISO de tratamento com toxina botulínica.
@@ -397,7 +500,7 @@ PROTOCOLO DE ANÁLISE OBRIGATÓRIO:
 8. Documente seu raciocínio clínico
 
 FOTOS FORNECIDAS (na ordem):
-${validImages.map((_, i) => {
+${validImages.map((_: string, i: number) => {
   const labels = [
     '1. Face em REPOUSO (expressão neutra) - REFERÊNCIA PRINCIPAL',
     '2. Contração GLABELAR (franzir/expressão de bravo)',
@@ -447,24 +550,21 @@ Retorne o JSON estruturado conforme o formato especificado no system prompt.`
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("AI gateway error:", response.status);
       
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Limite de requisições excedido. Tente novamente mais tarde." }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Créditos de IA esgotados. Por favor, adicione créditos." }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      // Return user-friendly error messages without internal details
+      const errorMessages: Record<number, string> = {
+        429: 'Limite de requisições excedido. Tente novamente mais tarde.',
+        402: 'Créditos de IA esgotados. Por favor, adicione créditos.',
+        401: 'Erro de autenticação com o serviço de IA.',
+        403: 'Acesso negado ao serviço de IA.',
+      };
+      
+      const message = errorMessages[response.status] || 'Erro ao processar análise. Tente novamente.';
       
       return new Response(
-        JSON.stringify({ error: "Falha na análise de IA" }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: message }),
+        { status: response.status >= 500 ? 500 : response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -491,7 +591,7 @@ Retorne o JSON estruturado conforme o formato especificado no system prompt.`
       
       // Validate and enhance analysis
       if (analysis.treatment_plan && analysis.treatment_plan.zones) {
-        const legacyPoints: any[] = [];
+        const legacyPoints: unknown[] = [];
         const dosageByMuscle: Record<string, number> = {};
         
         // Calculate average confidence
@@ -504,245 +604,106 @@ Retorne o JSON estruturado conforme o formato especificado no system prompt.`
             zoneCount++;
           }
           
-          for (const point of zone.injection_points || []) {
-            // Convert relative coordinates (0-1) to percentage (0-100)
-            const xPercent = Math.round((point.coordinates?.x || 0.5) * 100);
-            const yPercent = Math.round((point.coordinates?.y || 0.5) * 100);
-            
-            legacyPoints.push({
-              id: point.id,
-              muscle: point.muscle || point.type,
-              x: xPercent,
-              y: yPercent,
-              depth: point.depth === 'deep_intramuscular' ? 'deep' : 'superficial',
-              dosage: point.units,
-              notes: point.warning_message || point.rationale || '',
-              safetyWarning: point.safety_warning,
-              relativeX: point.coordinates?.x,
-              relativeY: point.coordinates?.y,
-              confidence: point.point_confidence,
-              zone: zone.zone_name
-            });
-            
-            const muscleKey = point.muscle || point.type || 'other';
-            dosageByMuscle[muscleKey] = (dosageByMuscle[muscleKey] || 0) + (point.units || 0);
+          if (zone.injection_points && Array.isArray(zone.injection_points)) {
+            for (const point of zone.injection_points) {
+              // Map new format to legacy format for compatibility
+              const legacyPoint = {
+                id: point.id || `${point.type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                muscle: point.type || point.muscle || 'unknown',
+                x: point.coordinates?.x ? point.coordinates.x * 100 : 50,
+                y: point.coordinates?.y ? point.coordinates.y * 100 : 50,
+                depth: point.depth || 'superficial',
+                dosage: point.units || 0,
+                notes: point.rationale || point.warning_message || '',
+                confidence: point.point_confidence || zone.zone_confidence || 0.7,
+                safetyWarning: point.safety_warning || false
+              };
+              
+              legacyPoints.push(legacyPoint);
+              
+              // Aggregate dosages by muscle type
+              const muscleType = legacyPoint.muscle.replace(/_left|_right|_head|_tail/g, '');
+              dosageByMuscle[muscleType] = (dosageByMuscle[muscleType] || 0) + legacyPoint.dosage;
+            }
           }
         }
         
-        analysis.injectionPoints = legacyPoints;
-        analysis.totalDosage = {
-          procerus: dosageByMuscle['Procerus'] || dosageByMuscle['procerus'] || dosageByMuscle['Prócero'] || 0,
-          corrugator: (dosageByMuscle['Corrugador Esquerdo'] || 0) + 
-                      (dosageByMuscle['Corrugador Direito'] || 0) + 
-                      (dosageByMuscle['corrugator'] || 0) +
-                      (dosageByMuscle['Corrugador'] || 0),
-          frontalis: dosageByMuscle['Frontal'] || dosageByMuscle['frontalis'] || 0,
-          orbicularis_oculi: (dosageByMuscle['Orbicular Esquerdo'] || 0) + 
-                             (dosageByMuscle['Orbicular Direito'] || 0) + 
-                             (dosageByMuscle['orbicularis'] || 0) +
-                             (dosageByMuscle['Orbicular do Olho'] || 0) +
-                             (dosageByMuscle['Orbicular dos Olhos'] || 0),
-          nasalis: dosageByMuscle['Nasal'] || dosageByMuscle['nasalis'] || dosageByMuscle['Nasalis'] || 0,
-          mentalis: dosageByMuscle['Mentual'] || dosageByMuscle['mentalis'] || dosageByMuscle['Mentalis'] || 0,
-          other: Object.entries(dosageByMuscle)
-            .filter(([k]) => !['Procerus', 'procerus', 'Prócero', 'Corrugador Esquerdo', 'Corrugador Direito', 'corrugator', 'Corrugador', 'Frontal', 'frontalis', 'Orbicular Esquerdo', 'Orbicular Direito', 'orbicularis', 'Orbicular do Olho', 'Orbicular dos Olhos', 'Nasal', 'nasalis', 'Nasalis', 'Mentual', 'mentalis', 'Mentalis'].includes(k))
-            .reduce((sum, [, v]) => sum + v, 0),
-          total: analysis.treatment_plan.total_units_suggested || legacyPoints.reduce((sum, p) => sum + (p.dosage || 0), 0)
+        // Build legacy response format
+        const legacyResponse = {
+          injectionPoints: legacyPoints,
+          totalDosage: {
+            procerus: dosageByMuscle.procerus || 0,
+            corrugator: (dosageByMuscle.corrugator || 0) + 
+                       (dosageByMuscle.corrugator_head || 0) + 
+                       (dosageByMuscle.corrugator_tail || 0),
+            frontalis: dosageByMuscle.frontalis || 0,
+            orbicularis_oculi: dosageByMuscle.orbicularis || dosageByMuscle.orbicularis_oculi || 0,
+            other: 0,
+            total: analysis.treatment_plan.total_units_suggested || 0
+          },
+          clinicalNotes: analysis.clinical_notes || analysis.differential_recommendations || '',
+          confidence: zoneCount > 0 ? totalZoneConfidence / zoneCount : (analysis.confidence || 0.7),
+          
+          // Include enhanced data
+          anatomicalLandmarks: analysis.anatomical_landmarks,
+          patientProfile: analysis.patient_profile,
+          safetyZones: analysis.treatment_plan.safety_zones_to_avoid,
+          validationChecks: analysis.validation_checks,
+          confidenceBreakdown: analysis.confidence_breakdown,
+          metaData: analysis.meta_data
         };
-        analysis.clinicalNotes = analysis.clinical_notes || '';
-        analysis.safetyZones = analysis.treatment_plan.safety_zones_to_avoid || [];
-        analysis.patientProfile = analysis.patient_profile;
-        analysis.anatomicalLandmarks = analysis.anatomical_landmarks;
-        analysis.validationChecks = analysis.validation_checks;
-        analysis.confidenceBreakdown = analysis.confidence_breakdown;
         
-        // Enhance global confidence if zone confidences are available
-        if (zoneCount > 0 && !analysis.confidence) {
-          analysis.confidence = totalZoneConfidence / zoneCount;
+        // Calculate total if not provided
+        if (!legacyResponse.totalDosage.total) {
+          legacyResponse.totalDosage.total = 
+            legacyResponse.totalDosage.procerus +
+            legacyResponse.totalDosage.corrugator +
+            legacyResponse.totalDosage.frontalis +
+            legacyResponse.totalDosage.orbicularis_oculi;
         }
+        
+        console.log(`Analysis complete: ${legacyPoints.length} points, total ${legacyResponse.totalDosage.total}U, confidence ${Math.round(legacyResponse.confidence * 100)}%`);
+        
+        return new Response(
+          JSON.stringify(legacyResponse),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+      
+      // Fallback for simpler response format
+      return new Response(
+        JSON.stringify({
+          injectionPoints: analysis.injectionPoints || [],
+          totalDosage: analysis.totalDosage || { procerus: 0, corrugator: 0, total: 0 },
+          clinicalNotes: analysis.clinicalNotes || analysis.clinical_notes || '',
+          confidence: analysis.confidence || 0.7
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
       
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
-      console.error("Raw response:", aiResponse.substring(0, 500));
       
-      // Return enhanced default analysis
-      const genderFactor = patientGender === 'masculino' ? 1.35 : 1.0;
-      const baseProcerus = Math.round(5 * genderFactor);
-      const baseCorrugator = Math.round(16 * genderFactor);
-      const baseFrontalis = Math.round(12 * genderFactor);
-      const baseOrbicularis = Math.round(18 * genderFactor);
-      
-      analysis = {
-        meta_data: {
-          algorithm_version: "v3.0_fallback",
-          analysis_timestamp: new Date().toISOString(),
-          photos_analyzed: validImages.length,
-          dynamic_analysis_performed: hasDynamicPhotos
-        },
-        patient_profile: {
-          estimated_gender: patientGender || "female",
-          estimated_age_range: patientAge ? (patientAge < 30 ? "20-30" : patientAge < 40 ? "30-40" : patientAge < 50 ? "40-50" : "50+") : "30-40",
-          muscle_strength_score: "medium",
-          skin_type_glogau: "II",
-          facial_asymmetry_detected: false
-        },
-        anatomical_landmarks: {
-          left_pupil: { x: 0.40, y: 0.38 },
-          right_pupil: { x: 0.60, y: 0.38 },
-          nasion: { x: 0.50, y: 0.40 },
-          glabella_center: { x: 0.50, y: 0.36 },
-          left_brow_head: { x: 0.42, y: 0.33 },
-          right_brow_head: { x: 0.58, y: 0.33 },
-          left_lateral_canthus: { x: 0.28, y: 0.40 },
-          right_lateral_canthus: { x: 0.72, y: 0.40 }
-        },
-        treatment_plan: {
-          product_selected: "OnabotulinumtoxinA",
-          conversion_factor: 1.0,
-          total_units_suggested: baseProcerus + baseCorrugator + baseFrontalis + baseOrbicularis,
-          zones: [
-            {
-              zone_name: "Glabella",
-              anatomy_target: "Procerus & Corrugadores",
-              severity_scale_merz: 2,
-              zone_confidence: 0.80,
-              total_units_zone: baseProcerus + baseCorrugator,
-              injection_pattern: "central_radial",
-              injection_points: [
-                { id: "g1", type: "procerus", muscle: "Prócero", units: baseProcerus, depth: "deep_intramuscular", coordinates: { x: 0.50, y: 0.36 }, point_confidence: 0.90, safety_warning: false, rationale: "Ponto central no prócero, exatamente na linha média" },
-                { id: "g2", type: "corrugator_head", muscle: "Corrugador Esquerdo", units: Math.round(baseCorrugator * 0.30), depth: "deep_intramuscular", coordinates: { x: 0.43, y: 0.34 }, point_confidence: 0.85, safety_warning: false, rationale: "Cabeça do corrugador esquerdo" },
-                { id: "g3", type: "corrugator_tail", muscle: "Corrugador Esquerdo", units: Math.round(baseCorrugator * 0.20), depth: "superficial", coordinates: { x: 0.37, y: 0.31 }, point_confidence: 0.80, safety_warning: true, warning_message: "Manter 1cm acima da margem orbital", rationale: "Cauda do corrugador esquerdo" },
-                { id: "g4", type: "corrugator_head", muscle: "Corrugador Direito", units: Math.round(baseCorrugator * 0.30), depth: "deep_intramuscular", coordinates: { x: 0.57, y: 0.34 }, point_confidence: 0.85, safety_warning: false, rationale: "Cabeça do corrugador direito" },
-                { id: "g5", type: "corrugator_tail", muscle: "Corrugador Direito", units: Math.round(baseCorrugator * 0.20), depth: "superficial", coordinates: { x: 0.63, y: 0.31 }, point_confidence: 0.80, safety_warning: true, warning_message: "Manter 1cm acima da margem orbital", rationale: "Cauda do corrugador direito" }
-              ]
-            },
-            {
-              zone_name: "Frontalis",
-              anatomy_target: "Músculo Frontal",
-              severity_scale_merz: 2,
-              zone_confidence: 0.78,
-              total_units_zone: baseFrontalis,
-              injection_pattern: "v_shape_grid",
-              injection_points: [
-                { id: "f1", type: "frontalis", muscle: "Frontal", units: Math.round(baseFrontalis * 0.14), depth: "superficial", coordinates: { x: 0.33, y: 0.20 }, point_confidence: 0.82, safety_warning: false, rationale: "Lateral esquerda, 2cm acima da sobrancelha" },
-                { id: "f2", type: "frontalis", muscle: "Frontal", units: Math.round(baseFrontalis * 0.14), depth: "superficial", coordinates: { x: 0.42, y: 0.17 }, point_confidence: 0.85, safety_warning: false, rationale: "Paramedial esquerda" },
-                { id: "f3", type: "frontalis", muscle: "Frontal", units: Math.round(baseFrontalis * 0.16), depth: "superficial", coordinates: { x: 0.50, y: 0.14 }, point_confidence: 0.88, safety_warning: false, rationale: "Centro do frontal" },
-                { id: "f4", type: "frontalis", muscle: "Frontal", units: Math.round(baseFrontalis * 0.14), depth: "superficial", coordinates: { x: 0.58, y: 0.17 }, point_confidence: 0.85, safety_warning: false, rationale: "Paramedial direita" },
-                { id: "f5", type: "frontalis", muscle: "Frontal", units: Math.round(baseFrontalis * 0.14), depth: "superficial", coordinates: { x: 0.67, y: 0.20 }, point_confidence: 0.82, safety_warning: false, rationale: "Lateral direita, 2cm acima da sobrancelha" },
-                { id: "f6", type: "frontalis", muscle: "Frontal", units: Math.round(baseFrontalis * 0.14), depth: "superficial", coordinates: { x: 0.45, y: 0.22 }, point_confidence: 0.80, safety_warning: false, rationale: "Linha inferior esquerda" },
-                { id: "f7", type: "frontalis", muscle: "Frontal", units: Math.round(baseFrontalis * 0.14), depth: "superficial", coordinates: { x: 0.55, y: 0.22 }, point_confidence: 0.80, safety_warning: false, rationale: "Linha inferior direita" }
-              ]
-            },
-            {
-              zone_name: "Periorbital",
-              anatomy_target: "Orbicular dos Olhos",
-              severity_scale_merz: 2,
-              zone_confidence: 0.82,
-              total_units_zone: baseOrbicularis,
-              injection_pattern: "fan_pattern",
-              injection_points: [
-                { id: "o1", type: "orbicularis", muscle: "Orbicular Esquerdo", units: Math.round(baseOrbicularis * 0.16), depth: "superficial", coordinates: { x: 0.25, y: 0.37 }, point_confidence: 0.85, safety_warning: false, rationale: "Superior, 45° acima do canto" },
-                { id: "o2", type: "orbicularis", muscle: "Orbicular Esquerdo", units: Math.round(baseOrbicularis * 0.18), depth: "superficial", coordinates: { x: 0.23, y: 0.42 }, point_confidence: 0.88, safety_warning: false, rationale: "Médio, horizontal ao canto" },
-                { id: "o3", type: "orbicularis", muscle: "Orbicular Esquerdo", units: Math.round(baseOrbicularis * 0.16), depth: "superficial", coordinates: { x: 0.25, y: 0.47 }, point_confidence: 0.85, safety_warning: false, rationale: "Inferior, 45° abaixo do canto" },
-                { id: "o4", type: "orbicularis", muscle: "Orbicular Direito", units: Math.round(baseOrbicularis * 0.16), depth: "superficial", coordinates: { x: 0.75, y: 0.37 }, point_confidence: 0.85, safety_warning: false, rationale: "Superior, 45° acima do canto" },
-                { id: "o5", type: "orbicularis", muscle: "Orbicular Direito", units: Math.round(baseOrbicularis * 0.18), depth: "superficial", coordinates: { x: 0.77, y: 0.42 }, point_confidence: 0.88, safety_warning: false, rationale: "Médio, horizontal ao canto" },
-                { id: "o6", type: "orbicularis", muscle: "Orbicular Direito", units: Math.round(baseOrbicularis * 0.16), depth: "superficial", coordinates: { x: 0.75, y: 0.47 }, point_confidence: 0.85, safety_warning: false, rationale: "Inferior, 45° abaixo do canto" }
-              ]
-            }
+      // Return a fallback response
+      return new Response(
+        JSON.stringify({
+          injectionPoints: [
+            { id: "proc_1", muscle: "procerus", x: 50, y: 25, depth: "deep", dosage: 8, notes: "Ponto central do procerus" },
+            { id: "corr_l1", muscle: "corrugator_left", x: 35, y: 22, depth: "deep", dosage: 6, notes: "Corrugador esquerdo" },
+            { id: "corr_r1", muscle: "corrugator_right", x: 65, y: 22, depth: "deep", dosage: 6, notes: "Corrugador direito" },
           ],
-          safety_zones_to_avoid: [
-            {
-              region: "Margem Orbital Superior",
-              reason: "Risco de difusão para o elevador da pálpebra",
-              clinical_consequence: "Ptose Palpebral (queda da pálpebra)",
-              polygon_coordinates: [
-                { x: 0.35, y: 0.36 },
-                { x: 0.65, y: 0.36 },
-                { x: 0.65, y: 0.42 },
-                { x: 0.35, y: 0.42 }
-              ]
-            },
-            {
-              region: "Área Infraorbital Bilateral",
-              reason: "Proximidade com zigomático maior",
-              clinical_consequence: "Assimetria do sorriso",
-              polygon_coordinates: [
-                { x: 0.28, y: 0.48 },
-                { x: 0.40, y: 0.48 },
-                { x: 0.40, y: 0.58 },
-                { x: 0.28, y: 0.58 }
-              ]
-            }
-          ]
-        },
-        validation_checks: {
-          bilateral_symmetry_verified: true,
-          spatial_hierarchy_verified: true,
-          danger_zone_conflicts: [],
-          dosage_within_literature: true
-        },
-        clinical_notes: `Análise padrão para tratamento do terço superior facial. Dosagens baseadas no Consenso Brasileiro 2024. ${patientGender === 'masculino' ? 'Ajuste de +35% aplicado para paciente masculino devido à maior massa muscular.' : ''} Recomenda-se avaliação presencial da dinâmica muscular. Este é um plano inicial conservador.`,
-        confidence: 0.75,
-        confidence_breakdown: {
-          image_quality: 0.80,
-          landmark_visibility: 0.75,
-          pattern_typicality: 0.80,
-          dynamic_consistency: hasDynamicPhotos ? 0.75 : 0.60
-        },
-        // Legacy format
-        injectionPoints: [],
-        totalDosage: { 
-          procerus: baseProcerus, 
-          corrugator: baseCorrugator, 
-          frontalis: baseFrontalis, 
-          orbicularis_oculi: baseOrbicularis, 
-          nasalis: 0,
-          mentalis: 0,
-          other: 0, 
-          total: baseProcerus + baseCorrugator + baseFrontalis + baseOrbicularis 
-        }
-      };
-      
-      // Generate legacy points from zones and add to analysis object
-      const legacyPointsArray: any[] = [];
-      for (const zone of analysis.treatment_plan.zones) {
-        for (const point of zone.injection_points) {
-          legacyPointsArray.push({
-            id: point.id,
-            muscle: point.muscle,
-            x: Math.round(point.coordinates.x * 100),
-            y: Math.round(point.coordinates.y * 100),
-            depth: point.depth === 'deep_intramuscular' ? 'deep' : 'superficial',
-            dosage: point.units,
-            notes: point.warning_message || point.rationale || '',
-            safetyWarning: point.safety_warning,
-            relativeX: point.coordinates.x,
-            relativeY: point.coordinates.y,
-            confidence: point.point_confidence,
-            zone: zone.zone_name
-          });
-        }
-      }
-      // Add legacy format properties
-      (analysis as any).injectionPoints = legacyPointsArray;
-      (analysis as any).clinicalNotes = analysis.clinical_notes;
-      (analysis as any).safetyZones = analysis.treatment_plan.safety_zones_to_avoid;
-      (analysis as any).patientProfile = analysis.patient_profile;
-      (analysis as any).anatomicalLandmarks = analysis.anatomical_landmarks;
+          totalDosage: { procerus: 8, corrugator: 12, total: 20 },
+          clinicalNotes: "Análise padrão aplicada (fallback). Recomenda-se revisão manual dos pontos.",
+          confidence: 0.5
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-
-    console.log("Precision analysis complete with", analysis.injectionPoints?.length || 0, "points");
-
-    return new Response(
-      JSON.stringify(analysis),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    
   } catch (error) {
-    console.error("Error in analyze-face function:", error);
+    console.error("Function error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Erro desconhecido" }),
+      JSON.stringify({ error: "Erro interno no processamento. Tente novamente." }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

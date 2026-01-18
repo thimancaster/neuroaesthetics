@@ -307,11 +307,8 @@ export function NewAnalysisWizard({ existingPatientId }: NewAnalysisWizardProps)
       return null;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('patient-photos')
-      .getPublicUrl(fileName);
-
-    return publicUrl;
+    // Return file path only, not public URL (for security - use signed URLs when displaying)
+    return fileName;
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
