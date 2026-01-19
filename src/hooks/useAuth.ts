@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { sanitizeError, logError } from '@/lib/errors';
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -32,65 +34,87 @@ export const useAuth = () => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    if (error) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        logError(error, 'useAuth.signIn');
+        toast({
+          title: "Erro ao entrar",
+          description: sanitizeError(error),
+          variant: "destructive",
+        });
+        return { error };
+      }
+      
+      // Redirect to intended destination or dashboard
+      const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/dashboard';
+      navigate(from, { replace: true });
+      return { error: null };
+    } catch (err) {
+      logError(err, 'useAuth.signIn.catch');
       toast({
         title: "Erro ao entrar",
-        description: error.message === "Invalid login credentials" 
-          ? "Email ou senha incorretos" 
-          : error.message,
+        description: sanitizeError(err),
         variant: "destructive",
       });
-      return { error };
+      return { error: err };
     }
-    
-    navigate('/dashboard');
-    return { error: null };
   };
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    const redirectUrl = `${window.location.origin}/dashboard`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
+    try {
+      const redirectUrl = `${window.location.origin}/dashboard`;
+      
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: fullName,
+          },
         },
-      },
-    });
-    
-    if (error) {
-      let message = error.message;
-      if (error.message.includes("already registered")) {
-        message = "Este email já está cadastrado";
+      });
+      
+      if (error) {
+        logError(error, 'useAuth.signUp');
+        toast({
+          title: "Erro ao criar conta",
+          description: sanitizeError(error),
+          variant: "destructive",
+        });
+        return { error };
       }
+      
+      toast({
+        title: "Conta criada com sucesso!",
+        description: "Você já pode acessar a plataforma.",
+      });
+      
+      navigate('/dashboard');
+      return { error: null };
+    } catch (err) {
+      logError(err, 'useAuth.signUp.catch');
       toast({
         title: "Erro ao criar conta",
-        description: message,
+        description: sanitizeError(err),
         variant: "destructive",
       });
-      return { error };
+      return { error: err };
     }
-    
-    toast({
-      title: "Conta criada com sucesso!",
-      description: "Você já pode acessar a plataforma.",
-    });
-    
-    navigate('/dashboard');
-    return { error: null };
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/login');
+    try {
+      await supabase.auth.signOut();
+      navigate('/login');
+    } catch (err) {
+      logError(err, 'useAuth.signOut');
+    }
   };
 
   return {

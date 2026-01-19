@@ -7,6 +7,9 @@ import { User, Building2, Stethoscope, Mail, Loader2, Check } from "lucide-react
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { profileSchema } from "@/lib/validation";
+import { sanitizeError, logError } from "@/lib/errors";
+import { z } from "zod";
 
 interface Profile {
   id: string;
@@ -35,19 +38,27 @@ export function ProfileSettings() {
 
   const fetchProfile = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", user?.id)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user?.id)
+        .maybeSingle();
 
-    if (data) {
-      setProfile(data);
-      setForm({
-        full_name: data.full_name || "",
-        clinic_name: data.clinic_name || "",
-        specialty: data.specialty || "",
-      });
+      if (error) {
+        logError(error, 'ProfileSettings.fetchProfile');
+      }
+
+      if (data) {
+        setProfile(data);
+        setForm({
+          full_name: data.full_name || "",
+          clinic_name: data.clinic_name || "",
+          specialty: data.specialty || "",
+        });
+      }
+    } catch (err) {
+      logError(err, 'ProfileSettings.fetchProfile.catch');
     }
     setIsLoading(false);
   };
@@ -56,29 +67,50 @@ export function ProfileSettings() {
     if (!user) return;
     setIsSaving(true);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: form.full_name,
-        clinic_name: form.clinic_name,
-        specialty: form.specialty,
-      })
-      .eq("user_id", user.id);
+    try {
+      // Validate form data
+      const validatedData = profileSchema.parse({
+        full_name: form.full_name || null,
+        clinic_name: form.clinic_name || null,
+        specialty: form.specialty || null,
+      });
+
+      const { error } = await supabase
+        .from("profiles")
+        .update(validatedData)
+        .eq("user_id", user.id);
+
+      if (error) {
+        logError(error, 'ProfileSettings.handleSave');
+        toast({
+          title: "Erro ao salvar",
+          description: sanitizeError(error),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Perfil atualizado!",
+          description: "Suas informações foram salvas com sucesso.",
+        });
+      }
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        toast({
+          title: "Dados inválidos",
+          description: err.errors[0].message,
+          variant: "destructive",
+        });
+      } else {
+        logError(err, 'ProfileSettings.handleSave.catch');
+        toast({
+          title: "Erro ao salvar",
+          description: sanitizeError(err),
+          variant: "destructive",
+        });
+      }
+    }
 
     setIsSaving(false);
-
-    if (error) {
-      toast({
-        title: "Erro ao salvar",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Perfil atualizado!",
-        description: "Suas informações foram salvas com sucesso.",
-      });
-    }
   };
 
   if (isLoading) {
