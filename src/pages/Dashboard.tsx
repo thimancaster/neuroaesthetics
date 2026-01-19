@@ -292,23 +292,9 @@ function NewAnalysisWithPatientPage() {
 }
 
 const Dashboard = () => {
-  const navigate = useNavigate();
-  const { user, loading, signOut } = useAuth();
+  const { user, signOut } = useAuth();
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate("/login");
-    }
-  }, [user, loading, navigate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
+  // ProtectedRoute already handles auth check - user is guaranteed to exist here
   if (!user) return null;
 
   return (

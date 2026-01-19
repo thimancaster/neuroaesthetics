@@ -25,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { PatientQuickStats } from "./PatientQuickStats";
 import { PatientEditDialog } from "./PatientEditDialog";
+import { sanitizeError, logError } from "@/lib/errors";
 
 interface Patient {
   id: string;
@@ -55,30 +56,39 @@ export function PatientsList({ patients, onRefresh }: PatientsListProps) {
     if (!deletingPatient) return;
     setIsLoading(true);
 
-    // Delete related analyses and appointments first
-    await Promise.all([
-      supabase.from("analyses").delete().eq("patient_id", deletingPatient.id),
-      supabase.from("appointments").delete().eq("patient_id", deletingPatient.id),
-    ]);
+    try {
+      // Delete related analyses and appointments first
+      await Promise.all([
+        supabase.from("analyses").delete().eq("patient_id", deletingPatient.id),
+        supabase.from("appointments").delete().eq("patient_id", deletingPatient.id),
+      ]);
 
-    const { error } = await supabase
-      .from("patients")
-      .delete()
-      .eq("id", deletingPatient.id);
+      const { error } = await supabase
+        .from("patients")
+        .delete()
+        .eq("id", deletingPatient.id);
 
-    setIsLoading(false);
-
-    if (error) {
+      if (error) {
+        logError(error, 'PatientsList.handleDelete');
+        toast({
+          title: "Erro ao excluir",
+          description: sanitizeError(error),
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Paciente excluído com sucesso!" });
+        setDeletingPatient(null);
+        onRefresh();
+      }
+    } catch (err) {
+      logError(err, 'PatientsList.handleDelete.catch');
       toast({
         title: "Erro ao excluir",
-        description: error.message,
+        description: sanitizeError(err),
         variant: "destructive",
       });
-    } else {
-      toast({ title: "Paciente excluído com sucesso!" });
-      setDeletingPatient(null);
-      onRefresh();
     }
+    setIsLoading(false);
   };
 
   const handleNewConsultation = (patient: Patient) => {

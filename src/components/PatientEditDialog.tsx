@@ -22,6 +22,9 @@ import { Loader2, User, MapPin, Heart, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInYears, parseISO } from "date-fns";
+import { patientSchema } from "@/lib/validation";
+import { sanitizeError, logError } from "@/lib/errors";
+import { z } from "zod";
 
 interface PatientData {
   id: string;
@@ -174,7 +177,8 @@ export function PatientEditDialog({
     setIsSaving(true);
 
     try {
-      const updateData: Record<string, any> = {
+      // Validate form data before saving
+      const validatedData = patientSchema.parse({
         name: form.name.trim(),
         age: form.age,
         gender: form.gender,
@@ -188,11 +192,11 @@ export function PatientEditDialog({
         emergency_contact: form.emergency_contact?.trim() || null,
         emergency_phone: form.emergency_phone?.replace(/\D/g, "") || null,
         observations: form.observations?.trim() || null,
-      };
+      });
 
       const { error } = await supabase
         .from("patients")
-        .update(updateData)
+        .update(validatedData)
         .eq("id", activePatient!.id);
 
       if (error) throw error;
@@ -201,12 +205,21 @@ export function PatientEditDialog({
       setLoadedPatient(null);
       onSaved();
       onOpenChange(false);
-    } catch (error: any) {
-      toast({
-        title: "Erro ao salvar",
-        description: error.message,
-        variant: "destructive",
-      });
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        toast({
+          title: "Dados inválidos",
+          description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else {
+        logError(error, 'PatientEditDialog.handleSave');
+        toast({
+          title: "Erro ao salvar",
+          description: sanitizeError(error),
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsSaving(false);
     }

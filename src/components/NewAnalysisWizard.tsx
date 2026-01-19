@@ -17,6 +17,7 @@ import { ProductSelector, TOXIN_PRODUCTS } from "./ProductSelector";
 import { TreatmentTemplates } from "./TreatmentTemplates";
 import { PatientHistorySummary } from "./PatientHistorySummary";
 import { exportAnalysisPdf } from "@/lib/exportPdf";
+import { sanitizeError, logError } from "@/lib/errors";
 
 interface PatientData {
   name: string;
@@ -617,10 +618,11 @@ export function NewAnalysisWizard({ existingPatientId }: NewAnalysisWizardProps)
       setSelectedProduct("botox");
       setConversionFactor(1.0);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      logError(error, 'NewAnalysisWizard.handleComplete');
       toast({
         title: "Erro ao salvar",
-        description: error.message,
+        description: sanitizeError(error),
         variant: "destructive",
       });
     } finally {
